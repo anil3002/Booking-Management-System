@@ -1,0 +1,462 @@
+import { ROOMS } from "@/lib/rooms";
+import { getMockBookings, setMockBookings } from "@/lib/mock-store";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import type {
+  Booking,
+  BookingFormInput,
+  DashboardSummary,
+  RoomStatus,
+} from "@/lib/types";
+import {
+  calculateRemainingBalance,
+  getBookingRooms,
+  getRoomDisplayStatus,
+  isActiveStatus,
+  overlaps,
+  roundMoney,
+  toStoredDateTime,
+  toNumber,
+  validateBookingInput,
+} from "@/lib/booking-utils";
+
+const ACTIVE_STATUSES = ["booked", "checked_in"] as const;
+
+export async function listBookings() {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("*")
+        .order("check_in_datetime", { ascending: true });
+
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    } catch (error) {
+      warnSupabaseReadFailure(error);
+      return [];
+    }
+  }
+
+  return getSortedMockBookings();
+}
+
+export async function getAllBookings() {
+  return listBookings();
+}
+
+export async function getBookingById(id: string) {
+  const bookings = await listBookings();
+  return bookings.find((booking) => booking.id === id) ?? null;
+}
+
+export async function listActiveBookings() {
+  const bookings = await listBookings();
+  return bookings.filter((booking) => isActiveStatus(booking.status));
+}
+
+export async function getActiveBookings() {
+  return listActiveBookings();
+}
+
+export async function listEditableBookings() {
+  const now = Date.now();
+  const bookings = await listBookings();
+
+  return bookings.filter(
+    (booking) =>
+      isActiveStatus(booking.status) ||
+      new Date(booking.check_out_datetime).getTime() >= now,
+  );
+}
+
+export async function getAvailableRooms(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+) {
+  const conflictingBookings = await findConflictingBookings(
+    checkInDateTime,
+    checkOutDateTime,
+    excludeBookingId,
+  );
+  const unavailableRooms = new Set(
+    conflictingBookings.flatMap((booking) => getBookingRooms(booking)),
+  );
+
+  return ROOMS.filter((room) => !unavailableRooms.has(room));
+}
+
+export async function checkBookingConflict(
+  roomNo: string,
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+) {
+  const conflicts = await findConflictingBookings(
+    checkInDateTime,
+    checkOutDateTime,
+    excludeBookingId,
+  );
+
+  return conflicts.some((booking) => getBookingRooms(booking).includes(roomNo));
+}
+
+export async function createBooking(input: BookingFormInput) {
+  const validationError = validateBookingInput(input);
+  if (validationError) throw new Error(validationError);
+
+  const checkIn = toStoredDateTime(input.check_in_datetime);
+  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const hasConflict = await checkBookingConflict(input.room_no, checkIn, checkOut);
+
+  if (hasConflict) {
+    throw new Error("This room is already booked for the selected date/time.");
+  }
+
+  const now = new Date().toISOString();
+  const bookingPayload = {
+    room_no: input.room_no,
+    room_nos: [input.room_no],
+    guest_name: input.guest_name.trim(),
+    number_of_persons: toNumber(input.number_of_persons),
+    id_type: input.id_type,
+    id_number: input.id_number.trim(),
+    number_of_children: toNumber(input.number_of_children),
+    check_in_datetime: checkIn,
+    check_out_datetime: checkOut,
+    actual_checkout_datetime: null,
+    advance_taken: roundMoney(toNumber(input.advance_taken)),
+    total_payment: roundMoney(toNumber(input.total_payment)),
+    remaining_balance: calculateRemainingBalance(
+      input.total_payment,
+      input.advance_taken,
+    ),
+    notes: input.notes.trim(),
+    status: "checked_in" as const,
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .insert(bookingPayload)
+        .select("*")
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data;
+    } catch (error) {
+      throw new Error(getSupabaseMutationMessage(error));
+    }
+  }
+
+  const booking: Booking = {
+    ...bookingPayload,
+    id: crypto.randomUUID(),
+    created_at: now,
+    updated_at: now,
+  };
+
+  setMockBookings([...getMockBookings(), booking]);
+  return booking;
+}
+
+export async function updateBooking(id: string, input: BookingFormInput) {
+  const validationError = validateBookingInput(input);
+  if (validationError) throw new Error(validationError);
+
+  const checkIn = toStoredDateTime(input.check_in_datetime);
+  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const hasConflict = await checkBookingConflict(
+    input.room_no,
+    checkIn,
+    checkOut,
+    id,
+  );
+
+  if (hasConflict) {
+    throw new Error("This update clashes with another active booking.");
+  }
+
+  const updatePayload = {
+    room_no: input.room_no,
+    room_nos: [input.room_no],
+    guest_name: input.guest_name.trim(),
+    number_of_persons: toNumber(input.number_of_persons),
+    id_type: input.id_type,
+    id_number: input.id_number.trim(),
+    number_of_children: toNumber(input.number_of_children),
+    check_in_datetime: checkIn,
+    check_out_datetime: checkOut,
+    advance_taken: roundMoney(toNumber(input.advance_taken)),
+    total_payment: roundMoney(toNumber(input.total_payment)),
+    remaining_balance: calculateRemainingBalance(
+      input.total_payment,
+      input.advance_taken,
+    ),
+    notes: input.notes.trim(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .update(updatePayload)
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data;
+    } catch (error) {
+      throw new Error(getSupabaseMutationMessage(error));
+    }
+  }
+
+  const bookings = getMockBookings();
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking) throw new Error("Booking not found.");
+
+  const updated: Booking = { ...booking, ...updatePayload };
+  setMockBookings(bookings.map((item) => (item.id === id ? updated : item)));
+  return updated;
+}
+
+export async function checkoutBooking(id: string, amountReceived: number) {
+  const amount = roundMoney(amountReceived);
+  if (amount < 0) throw new Error("Final payment cannot be negative.");
+
+  const bookings = await listBookings();
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking) throw new Error("Booking not found.");
+  if (!isActiveStatus(booking.status)) {
+    throw new Error("Only active bookings can be checked out.");
+  }
+
+  const remainingBalance = roundMoney(booking.remaining_balance - amount);
+  const updatePayload = {
+    status: "checked_out" as const,
+    actual_checkout_datetime: new Date().toISOString(),
+    remaining_balance: remainingBalance,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .update(updatePayload)
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data;
+    } catch (error) {
+      throw new Error(getSupabaseMutationMessage(error));
+    }
+  }
+
+  const updated: Booking = { ...booking, ...updatePayload };
+  setMockBookings(
+    getMockBookings().map((item) => (item.id === id ? updated : item)),
+  );
+  return updated;
+}
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const bookings = await listBookings();
+  const activeBookings = bookings.filter((booking) => isActiveStatus(booking.status));
+  const today = new Date();
+  const tomorrowStart = startOfDay(today);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const availableRoomsToday = await getAvailableRooms(
+    startOfDay(today).toISOString(),
+    endOfDay(today).toISOString(),
+  );
+
+  return {
+    totalRooms: ROOMS.length,
+    currentlyBookedRooms: activeBookings.filter((booking) =>
+      overlaps(
+        booking.check_in_datetime,
+        booking.check_out_datetime,
+        new Date().toISOString(),
+        endOfDay(today).toISOString(),
+      ),
+    ).length,
+    availableRoomsToday: availableRoomsToday.length,
+    upcomingCheckIns: bookings.filter(
+      (booking) =>
+        isActiveStatus(booking.status) &&
+        isSameDay(new Date(booking.check_in_datetime), today),
+    ).length,
+    todaysCheckOuts: bookings.filter(
+      (booking) =>
+        isActiveStatus(booking.status) &&
+        isSameDay(new Date(booking.check_out_datetime), today),
+    ).length,
+    upcomingBookings: bookings.filter(
+      (booking) =>
+        isActiveStatus(booking.status) &&
+        new Date(booking.check_in_datetime).getTime() >=
+          tomorrowStart.getTime(),
+    ).length,
+  };
+}
+
+export async function getDashboardStats() {
+  return getDashboardSummary();
+}
+
+export async function getRoomStatuses(): Promise<RoomStatus[]> {
+  const activeBookings = await listActiveBookings();
+  const now = new Date().toISOString();
+
+  return ROOMS.map((room) => {
+    const current = activeBookings
+      .filter(
+        (booking) =>
+          getBookingRooms(booking).includes(room) &&
+          overlaps(
+            booking.check_in_datetime,
+            booking.check_out_datetime,
+            now,
+            now,
+          ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.check_out_datetime).getTime() -
+          new Date(b.check_out_datetime).getTime(),
+      )[0];
+
+    if (!current) {
+      const future = activeBookings
+        .filter(
+          (booking) =>
+            getBookingRooms(booking).includes(room) &&
+            new Date(booking.check_in_datetime).getTime() > Date.now(),
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.check_in_datetime).getTime() -
+            new Date(b.check_in_datetime).getTime(),
+        )[0];
+
+      if (future) {
+        return {
+          room_no: room,
+          status: "Booked",
+          guest_name: future.guest_name,
+          check_out_datetime: future.check_out_datetime,
+        };
+      }
+
+      return { room_no: room, status: "Available" };
+    }
+
+    return {
+      room_no: room,
+      status: getRoomDisplayStatus(current),
+      guest_name: current.guest_name,
+      check_out_datetime: current.check_out_datetime,
+    };
+  });
+}
+
+async function findConflictingBookings(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+) {
+  if (supabase) {
+    // Room clash rule: existing check-in is before new checkout and existing
+    // checkout is after new check-in, excluding checked-out/cancelled bookings.
+    let query = supabase
+      .from("bookings")
+      .select("*")
+      .lt("check_in_datetime", checkOutDateTime)
+      .gt("check_out_datetime", checkInDateTime)
+      .in("status", [...ACTIVE_STATUSES]);
+
+    if (excludeBookingId) {
+      query = query.neq("id", excludeBookingId);
+    }
+
+    try {
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    } catch (error) {
+      warnSupabaseReadFailure(error);
+      return [];
+    }
+  }
+
+  return getMockConflicts(checkInDateTime, checkOutDateTime, excludeBookingId);
+}
+
+function getSortedMockBookings() {
+  return [...getMockBookings()].sort(
+    (a, b) =>
+      new Date(a.check_in_datetime).getTime() -
+      new Date(b.check_in_datetime).getTime(),
+  );
+}
+
+function getMockConflicts(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+) {
+  return getMockBookings().filter(
+    (booking) =>
+      (!excludeBookingId || booking.id !== excludeBookingId) &&
+      isActiveStatus(booking.status) &&
+      overlaps(
+        booking.check_in_datetime,
+        booking.check_out_datetime,
+        checkInDateTime,
+        checkOutDateTime,
+      ),
+  );
+}
+
+function warnSupabaseReadFailure(error: unknown) {
+  console.warn(
+    "Supabase read failed; returning no bookings until the backend is reachable.",
+    getErrorMessage(error),
+  );
+}
+
+function getSupabaseMutationMessage(error: unknown) {
+  return `Could not save to Supabase. Check your internet connection, Supabase URL/key, and that supabase/schema.sql has been run. Details: ${getErrorMessage(error)}`;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown Supabase error";
+}
+
+function startOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function endOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+}
+
+function isSameDay(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+export { isSupabaseConfigured };

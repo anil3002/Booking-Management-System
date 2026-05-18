@@ -1,0 +1,477 @@
+"use client";
+
+import { createClient } from "@supabase/supabase-js";
+import { ROOMS } from "@/lib/rooms";
+import {
+  calculateRemainingBalance,
+  getBookingRooms,
+  getRoomDisplayStatus,
+  isActiveStatus,
+  overlaps,
+  roundMoney,
+  toNumber,
+  toStoredDateTime,
+  validateBookingInput,
+} from "@/lib/booking-utils";
+import type { Booking, BookingFormInput } from "@/lib/types";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const browserSupabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
+
+export function isBrowserSupabaseReady() {
+  return Boolean(browserSupabase);
+}
+
+export async function getAllBookingsClient() {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  const { data, error } = await browserSupabase
+    .from("bookings")
+    .select("*")
+    .order("check_in_datetime", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Booking[];
+}
+
+export async function getActiveBookingsClient() {
+  const bookings = await getAllBookingsClient();
+  return bookings.filter((booking) => isActiveStatus(booking.status));
+}
+
+export async function getEditableBookingsClient() {
+  const now = Date.now();
+  const bookings = await getAllBookingsClient();
+
+  return bookings.filter(
+    (booking) =>
+      isActiveStatus(booking.status) ||
+      new Date(booking.check_out_datetime).getTime() >= now,
+  );
+}
+
+export async function getDashboardStatsClient() {
+  const bookings = await getAllBookingsClient();
+  const activeBookings = bookings.filter((booking) => isActiveStatus(booking.status));
+  const today = new Date();
+  const tomorrowStart = startOfDay(today);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const availableRoomsToday = await getAvailableRoomsClient(
+    startOfDay(today).toISOString(),
+    endOfDay(today).toISOString(),
+  );
+
+  return {
+    totalRooms: ROOMS.length,
+    currentlyBookedRooms: activeBookings.filter((booking) =>
+      overlaps(
+        booking.check_in_datetime,
+        booking.check_out_datetime,
+        new Date().toISOString(),
+        endOfDay(today).toISOString(),
+      ),
+    ).length,
+    availableRoomsToday: availableRoomsToday.length,
+    upcomingCheckIns: bookings.filter(
+      (booking) =>
+        isActiveStatus(booking.status) &&
+        isSameDay(new Date(booking.check_in_datetime), today),
+    ).length,
+    todaysCheckOuts: bookings.filter(
+      (booking) =>
+        isActiveStatus(booking.status) &&
+        isSameDay(new Date(booking.check_out_datetime), today),
+    ).length,
+    upcomingBookings: bookings.filter(
+      (booking) =>
+        isActiveStatus(booking.status) &&
+        new Date(booking.check_in_datetime).getTime() >=
+          tomorrowStart.getTime(),
+    ).length,
+  };
+}
+
+export async function getRoomStatusesClient() {
+  const activeBookings = await getActiveBookingsClient();
+  const now = new Date().toISOString();
+
+  return ROOMS.map((room) => {
+    const current = activeBookings
+      .filter(
+        (booking) =>
+          getBookingRooms(booking).includes(room) &&
+          overlaps(
+            booking.check_in_datetime,
+            booking.check_out_datetime,
+            now,
+            now,
+          ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.check_out_datetime).getTime() -
+          new Date(b.check_out_datetime).getTime(),
+      )[0];
+
+    if (!current) {
+      const future = activeBookings
+        .filter(
+          (booking) =>
+            getBookingRooms(booking).includes(room) &&
+            new Date(booking.check_in_datetime).getTime() > Date.now(),
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.check_in_datetime).getTime() -
+            new Date(b.check_in_datetime).getTime(),
+        )[0];
+
+      if (future) {
+        return {
+          room_no: room,
+          status: "Booked" as const,
+          guest_name: future.guest_name,
+          check_out_datetime: future.check_out_datetime,
+        };
+      }
+
+      return { room_no: room, status: "Available" as const };
+    }
+
+    return {
+      room_no: room,
+      status: getRoomDisplayStatus(current),
+      guest_name: current.guest_name,
+      check_out_datetime: current.check_out_datetime,
+    };
+  });
+}
+
+export async function getRoomStatusesForRangeClient(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+) {
+  const activeBookings = await getActiveBookingsClient();
+
+  return ROOMS.map((room) => {
+    const conflicting = activeBookings
+      .filter(
+        (booking) =>
+          getBookingRooms(booking).includes(room) &&
+          overlaps(
+            booking.check_in_datetime,
+            booking.check_out_datetime,
+            checkInDateTime,
+            checkOutDateTime,
+          ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.check_in_datetime).getTime() -
+          new Date(b.check_in_datetime).getTime(),
+      )[0];
+
+    if (!conflicting) {
+      return { room_no: room, status: "Available" as const };
+    }
+
+    return {
+      room_no: room,
+      status: getRoomDisplayStatus(conflicting),
+      guest_name: conflicting.guest_name,
+      check_out_datetime: conflicting.check_out_datetime,
+    };
+  });
+}
+
+export async function getAvailableRoomsClient(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+) {
+  const conflicts = await findConflictingBookingsClient(
+    checkInDateTime,
+    checkOutDateTime,
+    excludeBookingId,
+  );
+  const unavailable = new Set(conflicts.flatMap((booking) => getBookingRooms(booking)));
+  return ROOMS.filter((room) => !unavailable.has(room));
+}
+
+export async function checkBookingConflictClient(
+  roomNo: string,
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+) {
+  const conflicts = await findConflictingBookingsClient(
+    checkInDateTime,
+    checkOutDateTime,
+    excludeBookingId,
+  );
+
+  return conflicts.some((booking) => getBookingRooms(booking).includes(roomNo));
+}
+
+export async function createBookingClient(input: BookingFormInput) {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  const validationError = validateBookingInput(input);
+  if (validationError) throw new Error(validationError);
+
+  const checkIn = toStoredDateTime(input.check_in_datetime);
+  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const hasConflict = await checkBookingConflictClient(
+    input.room_no,
+    checkIn,
+    checkOut,
+  );
+
+  if (hasConflict) {
+    throw new Error("This room is already booked for the selected date/time.");
+  }
+
+  const { data, error } = await browserSupabase
+    .from("bookings")
+    .insert({
+      room_no: input.room_no,
+      room_nos: [input.room_no],
+      guest_name: input.guest_name.trim(),
+      number_of_persons: toNumber(input.number_of_persons),
+      id_type: input.id_type,
+      id_number: input.id_number.trim(),
+      number_of_children: toNumber(input.number_of_children),
+      check_in_datetime: checkIn,
+      check_out_datetime: checkOut,
+      actual_checkout_datetime: null,
+      advance_taken: roundMoney(toNumber(input.advance_taken)),
+      total_payment: roundMoney(toNumber(input.total_payment)),
+      remaining_balance: calculateRemainingBalance(
+        input.total_payment,
+        input.advance_taken,
+      ),
+      notes: input.notes.trim(),
+      status: "checked_in",
+    })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Booking;
+}
+
+export async function createBookingsClient(
+  input: BookingFormInput,
+  roomNumbers: string[],
+) {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  if (!roomNumbers.length) {
+    throw new Error("Select at least one available room.");
+  }
+
+  const validationError = validateBookingInput({
+    ...input,
+    room_no: roomNumbers[0],
+  });
+  if (validationError) throw new Error(validationError);
+
+  const checkIn = toStoredDateTime(input.check_in_datetime);
+  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const availableRooms = await getAvailableRoomsClient(checkIn, checkOut);
+  const unavailableSelectedRooms = roomNumbers.filter(
+    (roomNo) => !availableRooms.includes(roomNo as (typeof ROOMS)[number]),
+  );
+
+  if (unavailableSelectedRooms.length) {
+    throw new Error(
+      `Room ${unavailableSelectedRooms.join(", ")} is no longer available for this date/time.`,
+    );
+  }
+
+  const bookingRow = {
+    room_no: roomNumbers[0],
+    room_nos: roomNumbers,
+    guest_name: input.guest_name.trim(),
+    number_of_persons: toNumber(input.number_of_persons),
+    id_type: input.id_type,
+    id_number: input.id_number.trim(),
+    number_of_children: toNumber(input.number_of_children),
+    check_in_datetime: checkIn,
+    check_out_datetime: checkOut,
+    actual_checkout_datetime: null,
+    advance_taken: roundMoney(toNumber(input.advance_taken)),
+    total_payment: roundMoney(toNumber(input.total_payment)),
+    remaining_balance: calculateRemainingBalance(
+      input.total_payment,
+      input.advance_taken,
+    ),
+    notes: input.notes.trim(),
+    status: "checked_in",
+  };
+
+  const { data, error } = await browserSupabase
+    .from("bookings")
+    .insert(bookingRow)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Booking;
+}
+
+export async function updateBookingClient(id: string, input: BookingFormInput) {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  const validationError = validateBookingInput(input);
+  if (validationError) throw new Error(validationError);
+
+  const checkIn = toStoredDateTime(input.check_in_datetime);
+  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const hasConflict = await checkBookingConflictClient(
+    input.room_no,
+    checkIn,
+    checkOut,
+    id,
+  );
+
+  if (hasConflict) {
+    throw new Error("This update clashes with another active booking.");
+  }
+
+  const { data, error } = await browserSupabase
+    .from("bookings")
+    .update({
+      room_no: input.room_no,
+      room_nos: [input.room_no],
+      guest_name: input.guest_name.trim(),
+      number_of_persons: toNumber(input.number_of_persons),
+      id_type: input.id_type,
+      id_number: input.id_number.trim(),
+      number_of_children: toNumber(input.number_of_children),
+      check_in_datetime: checkIn,
+      check_out_datetime: checkOut,
+      advance_taken: roundMoney(toNumber(input.advance_taken)),
+      total_payment: roundMoney(toNumber(input.total_payment)),
+      remaining_balance: calculateRemainingBalance(
+        input.total_payment,
+        input.advance_taken,
+      ),
+      notes: input.notes.trim(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Booking;
+}
+
+export async function cancelBookingClient(id: string) {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  const { data, error } = await browserSupabase
+    .from("bookings")
+    .update({ status: "cancelled" })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Booking;
+}
+
+export async function checkoutBookingClient(
+  id: string,
+  booking: Booking,
+  amountReceived: number,
+) {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  const amount = roundMoney(amountReceived);
+  if (amount < 0) throw new Error("Final payment cannot be negative.");
+
+  const { data, error } = await browserSupabase
+    .from("bookings")
+    .update({
+      status: "checked_out",
+      actual_checkout_datetime: new Date().toISOString(),
+      remaining_balance: roundMoney(booking.remaining_balance - amount),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Booking;
+}
+
+async function findConflictingBookingsClient(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+) {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  let query = browserSupabase
+    .from("bookings")
+    .select("*")
+    .lt("check_in_datetime", checkOutDateTime)
+    .gt("check_out_datetime", checkInDateTime)
+    .not("status", "in", "(checked_out,cancelled)");
+
+  if (excludeBookingId) {
+    query = query.neq("id", excludeBookingId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as Booking[]).filter((booking) =>
+    overlaps(
+      booking.check_in_datetime,
+      booking.check_out_datetime,
+      checkInDateTime,
+      checkOutDateTime,
+    ),
+  );
+}
+
+function startOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(0, 0, 0, 0);
+  return value;
+}
+
+function endOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+}
+
+function isSameDay(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}

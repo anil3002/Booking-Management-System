@@ -1,0 +1,126 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import {
+  checkoutBooking,
+  createBooking,
+  getAvailableRooms,
+  updateBooking,
+} from "@/lib/bookings";
+import { sendWhatsAppNotification } from "@/lib/notifications";
+import type { ActionResult, Booking, BookingFormInput } from "@/lib/types";
+
+export async function checkAvailableRoomsAction(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+  excludeBookingId?: string,
+): Promise<ActionResult<string[]>> {
+  try {
+    if (!checkInDateTime || !checkOutDateTime) {
+      return {
+        ok: false,
+        message: "Choose check-in and check-out date/time first.",
+      };
+    }
+
+    if (new Date(checkOutDateTime).getTime() <= new Date(checkInDateTime).getTime()) {
+      return {
+        ok: false,
+        message: "Check-out date/time must be after check-in date/time.",
+      };
+    }
+
+    const rooms = await getAvailableRooms(
+      new Date(checkInDateTime).toISOString(),
+      new Date(checkOutDateTime).toISOString(),
+      excludeBookingId,
+    );
+
+    return {
+      ok: true,
+      message: rooms.length
+        ? "Available rooms loaded."
+        : "No rooms are available for this date/time range.",
+      data: rooms,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function createBookingAction(
+  input: BookingFormInput,
+): Promise<ActionResult<Booking>> {
+  try {
+    const booking = await createBooking(input);
+    const notification = await sendWhatsAppNotification("new_booking", booking);
+    revalidateBookingPages();
+    return {
+      ok: true,
+      message: notification.ok
+        ? "Booking saved successfully."
+        : "Booking saved, but WhatsApp notification failed.",
+      data: booking,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function updateBookingAction(
+  id: string,
+  input: BookingFormInput,
+): Promise<ActionResult<Booking>> {
+  try {
+    const booking = await updateBooking(id, input);
+    const notification = await sendWhatsAppNotification("modify_booking", booking);
+    revalidateBookingPages();
+    return {
+      ok: true,
+      message: notification.ok
+        ? "Booking updated successfully."
+        : "Booking updated, but WhatsApp notification failed.",
+      data: booking,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function checkoutBookingAction(
+  id: string,
+  amountReceived: number,
+): Promise<ActionResult<Booking>> {
+  try {
+    const booking = await checkoutBooking(id, amountReceived);
+    const notification = await sendWhatsAppNotification(
+      "checkout",
+      booking,
+      amountReceived,
+    );
+    revalidateBookingPages();
+    return {
+      ok: true,
+      message: notification.ok
+        ? "Customer checked out successfully."
+        : "Customer checked out, but WhatsApp notification failed.",
+      data: booking,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+function revalidateBookingPages() {
+  revalidatePath("/");
+  revalidatePath("/check-out");
+  revalidatePath("/modify");
+  revalidatePath("/rooms");
+}
+
+function failure<T = undefined>(error: unknown): ActionResult<T> {
+  return {
+    ok: false,
+    message: error instanceof Error ? error.message : "Something went wrong.",
+  };
+}
