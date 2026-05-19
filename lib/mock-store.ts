@@ -20,7 +20,7 @@ laterToday.setHours(19, 0, 0, 0);
 const seedBookings: Booking[] = [
   {
     id: "mock-1",
-    room_no: "101",
+    room_no: "111",
     guest_name: "Rahul Sharma",
     number_of_persons: 2,
     id_type: "Aadhaar",
@@ -39,7 +39,7 @@ const seedBookings: Booking[] = [
   },
   {
     id: "mock-2",
-    room_no: "104",
+    room_no: "114",
     guest_name: "Priya Nair",
     number_of_persons: 1,
     id_type: "PAN",

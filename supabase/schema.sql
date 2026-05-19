@@ -20,30 +20,45 @@ create table if not exists public.bookings (
   created_at timestamp not null default now(),
   updated_at timestamp not null default now(),
   constraint valid_booking_range check (check_out_datetime > check_in_datetime),
-  constraint valid_room_no check (room_no in ('101','102','103','104','105','106','107','108','109','110')),
+  constraint valid_room_no check (room_no in ('111','112','113','114','115','116','117','118','119','120')),
   constraint valid_room_nos check (
     cardinality(room_nos) > 0
-    and room_nos <@ array['101','102','103','104','105','106','107','108','109','110']::text[]
+    and room_nos <@ array['111','112','113','114','115','116','117','118','119','120']::text[]
   )
 );
 
 alter table public.bookings
 add column if not exists room_nos text[];
 
+alter table public.bookings
+drop constraint if exists valid_room_no;
+
+alter table public.bookings
+drop constraint if exists valid_room_nos;
+
 update public.bookings
 set room_nos = array[room_no]
 where room_nos is null or cardinality(room_nos) = 0;
+
+update public.bookings
+set
+  room_no = (room_no::integer + 10)::text,
+  room_nos = (
+    select array_agg((room_no_item::integer + 10)::text order by room_no_ordinality)
+    from unnest(room_nos) with ordinality as room_no_items(room_no_item, room_no_ordinality)
+  )
+where room_no in ('101','102','103','104','105','106','107','108','109','110');
 
 alter table public.bookings
 alter column room_nos set not null;
 
 alter table public.bookings
-drop constraint if exists valid_room_nos;
+add constraint valid_room_no check (room_no in ('111','112','113','114','115','116','117','118','119','120'));
 
 alter table public.bookings
 add constraint valid_room_nos check (
   cardinality(room_nos) > 0
-  and room_nos <@ array['101','102','103','104','105','106','107','108','109','110']::text[]
+  and room_nos <@ array['111','112','113','114','115','116','117','118','119','120']::text[]
 );
 
 create or replace function public.set_updated_at()
