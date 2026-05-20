@@ -5,6 +5,7 @@ export type Booking = {
   room_no: string;
   room_nos?: string[] | null;
   guest_name: string;
+  customer_phone_number: string;
   number_of_persons: number;
   id_type: string;
   id_number: string;
@@ -24,6 +25,7 @@ export type Booking = {
 export type BookingFormInput = {
   room_no: string;
   guest_name: string;
+  customer_phone_number: string;
   number_of_persons: number | "";
   id_type: string;
   id_number: string;

@@ -37,6 +37,7 @@ export function BookingCard({
       <div className="mt-4 grid gap-2 text-sm text-slate-700">
         <p>Check-in: {formatDateTime(booking.check_in_datetime)}</p>
         <p>Check-out: {formatDateTime(booking.check_out_datetime)}</p>
+        <p>Phone: {booking.customer_phone_number || "-"}</p>
         <p>Balance: Rs {booking.remaining_balance}</p>
         <p>ID: {booking.id_type} {booking.id_number}</p>
       </div>

@@ -55,6 +55,7 @@ export function CheckOutClient({ bookings }: CheckOutClientProps) {
     return liveBookings.filter((booking) =>
       [
         booking.guest_name,
+        booking.customer_phone_number,
         formatRooms(booking),
         booking.id_number,
         booking.check_in_datetime,
@@ -146,6 +147,7 @@ export function CheckOutClient({ bookings }: CheckOutClientProps) {
             <div className="grid gap-2 text-sm text-slate-700">
               <p>Check-in: {formatDateTime(selected.check_in_datetime)}</p>
               <p>Expected checkout: {formatDateTime(selected.check_out_datetime)}</p>
+              <p>Phone: {selected.customer_phone_number || "-"}</p>
               <p>Total payment: Rs {selected.total_payment}</p>
               <p>Advance taken: Rs {selected.advance_taken}</p>
               <p>Remaining balance: Rs {selected.remaining_balance}</p>

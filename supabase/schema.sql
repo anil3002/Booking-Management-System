@@ -5,6 +5,7 @@ create table if not exists public.bookings (
   room_no text not null,
   room_nos text[] not null,
   guest_name text not null,
+  customer_phone_number text not null default '',
   number_of_persons integer not null check (number_of_persons >= 1),
   id_type text not null,
   id_number text not null,
@@ -29,6 +30,9 @@ create table if not exists public.bookings (
 
 alter table public.bookings
 add column if not exists room_nos text[];
+
+alter table public.bookings
+add column if not exists customer_phone_number text not null default '';
 
 alter table public.bookings
 drop constraint if exists valid_room_no;

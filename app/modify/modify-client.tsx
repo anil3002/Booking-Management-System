@@ -65,6 +65,7 @@ export function ModifyClient({ bookings }: ModifyClientProps) {
     return liveBookings.filter((booking) =>
       [
         booking.guest_name,
+        booking.customer_phone_number,
         formatRooms(booking),
         booking.id_number,
         booking.check_in_datetime,
@@ -326,6 +327,16 @@ export function ModifyClient({ bookings }: ModifyClientProps) {
                   onChange={(event) => update("guest_name", event.target.value)}
                 />
               </Field>
+              <Field label="Customer phone number">
+                <TextInput
+                  type="tel"
+                  required
+                  value={form.customer_phone_number}
+                  onChange={(event) =>
+                    update("customer_phone_number", event.target.value)
+                  }
+                />
+              </Field>
               <Field label="Number of persons">
                 <TextInput
                   type="number"
@@ -454,6 +465,7 @@ function toForm(booking: Booking): BookingFormInput {
   return {
     room_no: booking.room_no,
     guest_name: booking.guest_name,
+    customer_phone_number: booking.customer_phone_number ?? "",
     number_of_persons: booking.number_of_persons,
     id_type: booking.id_type,
     id_number: booking.id_number,

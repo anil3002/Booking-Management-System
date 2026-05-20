@@ -69,6 +69,7 @@ export function validateBookingInput(input: BookingFormInput) {
   const totalPayment = toNumber(input.total_payment);
 
   if (!input.guest_name.trim()) return "Guest name is required.";
+  if (!input.customer_phone_number.trim()) return "Customer phone number is required.";
   if (!input.room_no) return "Room number is required.";
   if (!input.id_type) return "ID type is required.";
   if (!input.id_number.trim()) return "Aadhaar/PAN number is required.";

@@ -20,6 +20,7 @@ import { sendWhatsAppNotification } from "@/lib/notifications";
 const initialForm: BookingFormInput = {
   room_no: "",
   guest_name: "",
+  customer_phone_number: "",
   number_of_persons: 1,
   id_type: "Aadhaar",
   id_number: "",
@@ -191,6 +192,16 @@ export function CheckInForm() {
             required
             value={form.guest_name}
             onChange={(event) => update("guest_name", event.target.value)}
+          />
+        </Field>
+        <Field label="Customer phone number">
+          <TextInput
+            type="tel"
+            required
+            value={form.customer_phone_number}
+            onChange={(event) =>
+              update("customer_phone_number", event.target.value)
+            }
           />
         </Field>
         <Field label="Number of persons">
