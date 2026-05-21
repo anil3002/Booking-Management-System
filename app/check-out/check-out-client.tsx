@@ -12,7 +12,9 @@ import {
 import {
   formatDateTime,
   formatRooms,
+  getCurrentDateTimeLocalValue,
   getDateTimeLocalValue,
+  getDateTimeMs,
   roundMoney,
 } from "@/lib/booking-utils";
 import {
@@ -115,8 +117,8 @@ export function CheckOutClient({ bookings }: CheckOutClientProps) {
       throw new Error("Check-out date/time is required.");
     }
     if (
-      new Date(checkoutDateTime).getTime() <=
-      new Date(selected.check_in_datetime).getTime()
+      getDateTimeMs(checkoutDateTime) <=
+      getDateTimeMs(selected.check_in_datetime)
     ) {
       throw new Error("Check-out date/time must be after check-in date/time.");
     }
@@ -334,7 +336,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function getCurrentDateTimeLocal() {
-  return getDateTimeLocalValue(new Date().toISOString());
+  return getCurrentDateTimeLocalValue();
 }
 
 function calculateFinalPayment(
@@ -357,7 +359,7 @@ function calculateFinalPayment(
 function getCurrentBookings(bookings: Booking[]) {
   const now = Date.now();
   return bookings.filter(
-    (booking) => new Date(booking.check_in_datetime).getTime() <= now,
+    (booking) => getDateTimeMs(booking.check_in_datetime) <= now,
   );
 }
 

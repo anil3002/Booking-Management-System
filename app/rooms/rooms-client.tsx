@@ -5,6 +5,12 @@ import { Alert } from "@/components/alert";
 import { Field, TextInput } from "@/components/form-controls";
 import { RoomStatusCard } from "@/components/room-status-card";
 import { getRoomStatusesForRangeClient } from "@/lib/browser-bookings";
+import {
+  getCurrentDateTimeLocalValue,
+  getDateTimeLocalValue,
+  getDateTimeMs,
+  toStoredDateTime,
+} from "@/lib/booking-utils";
 import type { RoomStatus } from "@/lib/types";
 
 export function RoomsClient() {
@@ -35,8 +41,8 @@ export function RoomsClient() {
 
   function applyDateRange() {
     if (
-      new Date(draftRange.checkOut).getTime() <=
-      new Date(draftRange.checkIn).getTime()
+      getDateTimeMs(draftRange.checkOut) <=
+      getDateTimeMs(draftRange.checkIn)
     ) {
       setError("Check-out date/time must be after check-in date/time.");
       return;
@@ -123,27 +129,18 @@ function getErrorMessage(error: unknown) {
 
 async function loadRooms(checkIn: string, checkOut: string) {
   return getRoomStatusesForRangeClient(
-    new Date(checkIn).toISOString(),
-    new Date(checkOut).toISOString(),
+    toStoredDateTime(checkIn),
+    toStoredDateTime(checkOut),
   );
 }
 
 function getDefaultDateRange() {
-  const checkIn = new Date();
-  checkIn.setHours(11, 0, 0, 0);
-
-  const checkOut = new Date(checkIn);
-  checkOut.setDate(checkOut.getDate() + 1);
-  checkOut.setHours(10, 0, 0, 0);
+  const current = getCurrentDateTimeLocalValue();
+  const checkIn = `${current.slice(0, 10)}T11:00`;
+  const checkOutDate = new Date(getDateTimeMs(checkIn) + 24 * 60 * 60 * 1000);
 
   return {
-    checkIn: toDateTimeLocal(checkIn),
-    checkOut: toDateTimeLocal(checkOut),
+    checkIn,
+    checkOut: `${getDateTimeLocalValue(checkOutDate.toISOString()).slice(0, 10)}T10:00`,
   };
-}
-
-function toDateTimeLocal(date: Date) {
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60_000);
-  return local.toISOString().slice(0, 16);
 }

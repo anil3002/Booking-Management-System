@@ -1,5 +1,5 @@
 import type { Booking } from "@/lib/types";
-import { calculateRemainingBalance } from "@/lib/booking-utils";
+import { calculateRemainingBalance, toStoredDateTime } from "@/lib/booking-utils";
 
 const now = new Date();
 const todayStart = new Date(now);
@@ -27,8 +27,8 @@ const seedBookings: Booking[] = [
     id_type: "Aadhaar",
     id_number: "XXXX-XXXX-1234",
     number_of_children: 1,
-    check_in_datetime: yesterday.toISOString(),
-    check_out_datetime: laterToday.toISOString(),
+    check_in_datetime: toStoredDateTime(yesterday.toISOString()),
+    check_out_datetime: toStoredDateTime(laterToday.toISOString()),
     actual_checkout_datetime: null,
     advance_taken: 1000,
     total_payment: 3200,
@@ -47,8 +47,8 @@ const seedBookings: Booking[] = [
     id_type: "PAN",
     id_number: "ABCDE1234F",
     number_of_children: 0,
-    check_in_datetime: tomorrow.toISOString(),
-    check_out_datetime: nextDay.toISOString(),
+    check_in_datetime: toStoredDateTime(tomorrow.toISOString()),
+    check_out_datetime: toStoredDateTime(nextDay.toISOString()),
     actual_checkout_datetime: null,
     advance_taken: 500,
     total_payment: 1800,

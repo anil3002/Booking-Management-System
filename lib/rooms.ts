@@ -1,3 +1,5 @@
+import { getDateTimeMs } from "@/lib/booking-utils";
+
 export const ROOMS = [
   "111",
   "112",
@@ -39,8 +41,8 @@ export function calculateBillableStayPeriods(
 ) {
   const dayMs = 24 * 60 * 60 * 1000;
   const toleranceMs = 60 * 60 * 1000;
-  const checkInTime = new Date(checkInDateTime).getTime();
-  const checkOutTime = new Date(checkOutDateTime).getTime();
+  const checkInTime = getDateTimeMs(checkInDateTime);
+  const checkOutTime = getDateTimeMs(checkOutDateTime);
   const durationMs = checkOutTime - checkInTime;
 
   if (durationMs <= 0) return 0;

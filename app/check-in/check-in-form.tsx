@@ -15,6 +15,7 @@ import type { BookingFormInput } from "@/lib/types";
 import {
   formatDateTime,
   getOpenEndedCheckoutDateTime,
+  toStoredDateTime,
 } from "@/lib/booking-utils";
 import {
   createBookingsClient,
@@ -62,7 +63,7 @@ export function CheckInForm() {
         }
 
         const rooms = await getAvailableRoomsClient(
-          new Date(form.check_in_datetime).toISOString(),
+          toStoredDateTime(form.check_in_datetime),
           getOpenEndedCheckoutDateTime(form.check_in_datetime),
         );
         setAvailableRooms(rooms);

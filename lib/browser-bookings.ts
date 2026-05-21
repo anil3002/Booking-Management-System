@@ -4,6 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 import { ROOMS } from "@/lib/rooms";
 import {
   calculateRemainingBalance,
+  getCurrentDateTimeLocalValue,
+  getDateTimeLocalValue,
+  getDateTimeMs,
+  getIndiaDayEnd,
+  getIndiaDayKey,
+  getIndiaDayStart,
   getBookingRooms,
   getOpenEndedCheckoutDateTime,
   getRoomDisplayStatus,
@@ -55,19 +61,18 @@ export async function getEditableBookingsClient() {
   return bookings.filter(
     (booking) =>
       isActiveStatus(booking.status) ||
-      new Date(booking.check_out_datetime).getTime() >= now,
+      getDateTimeMs(booking.check_out_datetime) >= now,
   );
 }
 
 export async function getDashboardStatsClient() {
   const bookings = await getAllBookingsClient();
   const activeBookings = bookings.filter((booking) => isActiveStatus(booking.status));
-  const today = new Date();
-  const tomorrowStart = startOfDay(today);
-  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const today = getCurrentDateTimeLocalValue();
+  const tomorrow = addIndiaDays(today, 1);
   const availableRoomsToday = await getAvailableRoomsClient(
-    startOfDay(today).toISOString(),
-    endOfDay(today).toISOString(),
+    getIndiaDayStart(today),
+    getIndiaDayEnd(today),
   );
 
   return {
@@ -76,33 +81,33 @@ export async function getDashboardStatsClient() {
       overlaps(
         booking.check_in_datetime,
         booking.check_out_datetime,
-        new Date().toISOString(),
-        endOfDay(today).toISOString(),
+        today,
+        getIndiaDayEnd(today),
       ),
     ).length,
     availableRoomsToday: availableRoomsToday.length,
     upcomingCheckIns: bookings.filter(
       (booking) =>
         isActiveStatus(booking.status) &&
-        isSameDay(new Date(booking.check_in_datetime), today),
+        getIndiaDayKey(booking.check_in_datetime) === getIndiaDayKey(today),
     ).length,
     todaysCheckOuts: bookings.filter(
       (booking) =>
         isActiveStatus(booking.status) &&
-        isSameDay(new Date(booking.check_out_datetime), today),
+        getIndiaDayKey(booking.check_out_datetime) === getIndiaDayKey(today),
     ).length,
     upcomingBookings: bookings.filter(
       (booking) =>
         isActiveStatus(booking.status) &&
-        new Date(booking.check_in_datetime).getTime() >=
-          tomorrowStart.getTime(),
+        getDateTimeMs(booking.check_in_datetime) >=
+          getDateTimeMs(getIndiaDayStart(tomorrow)),
     ).length,
   };
 }
 
 export async function getRoomStatusesClient() {
   const activeBookings = await getActiveBookingsClient();
-  const now = new Date().toISOString();
+  const now = getCurrentDateTimeLocalValue();
 
   return ROOMS.map((room) => {
     const current = activeBookings
@@ -118,8 +123,8 @@ export async function getRoomStatusesClient() {
       )
       .sort(
         (a, b) =>
-          new Date(a.check_out_datetime).getTime() -
-          new Date(b.check_out_datetime).getTime(),
+          getDateTimeMs(a.check_out_datetime) -
+          getDateTimeMs(b.check_out_datetime),
       )[0];
 
     if (!current) {
@@ -127,12 +132,12 @@ export async function getRoomStatusesClient() {
         .filter(
           (booking) =>
             getBookingRooms(booking).includes(room) &&
-            new Date(booking.check_in_datetime).getTime() > Date.now(),
+            getDateTimeMs(booking.check_in_datetime) > Date.now(),
         )
         .sort(
           (a, b) =>
-            new Date(a.check_in_datetime).getTime() -
-            new Date(b.check_in_datetime).getTime(),
+            getDateTimeMs(a.check_in_datetime) -
+            getDateTimeMs(b.check_in_datetime),
         )[0];
 
       if (future) {
@@ -176,8 +181,8 @@ export async function getRoomStatusesForRangeClient(
       )
       .sort(
         (a, b) =>
-          new Date(a.check_in_datetime).getTime() -
-          new Date(b.check_in_datetime).getTime(),
+          getDateTimeMs(a.check_in_datetime) -
+          getDateTimeMs(b.check_in_datetime),
       )[0];
 
     if (!conflicting) {
@@ -492,7 +497,7 @@ export async function checkoutBookingClient(
   if (!checkoutDateTime) throw new Error("Check-out date/time is required.");
 
   const checkoutAt = toStoredDateTime(checkoutDateTime);
-  if (new Date(checkoutAt).getTime() <= new Date(booking.check_in_datetime).getTime()) {
+  if (getDateTimeMs(checkoutAt) <= getDateTimeMs(booking.check_in_datetime)) {
     throw new Error("Check-out date/time must be after check-in date/time.");
   }
 
@@ -566,22 +571,7 @@ async function findConflictingBookingsClient(
   );
 }
 
-function startOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
-}
-
-function endOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
-}
-
-function isSameDay(left: Date, right: Date) {
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
+function addIndiaDays(value: string, days: number) {
+  const next = new Date(getDateTimeMs(value) + days * 24 * 60 * 60 * 1000);
+  return getDateTimeLocalValue(next.toISOString());
 }

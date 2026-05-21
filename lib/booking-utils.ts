@@ -1,5 +1,11 @@
 import type { Booking, BookingFormInput } from "@/lib/types";
 
+const INDIA_TIME_ZONE = "Asia/Kolkata";
+const INDIA_OFFSET_MINUTES = 330;
+const DATE_TIME_PARTS =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?/;
+const EXPLICIT_TIME_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
 export function calculateRemainingBalance(
   totalPayment: number | "",
   advanceTaken: number | "",
@@ -16,13 +22,14 @@ export function toNumber(value: number | "") {
 }
 
 export function toStoredDateTime(value: string) {
-  return new Date(value).toISOString();
+  return toIndiaLocalDateTime(value);
 }
 
 export function getOpenEndedCheckoutDateTime(checkInDateTime: string) {
-  const date = new Date(checkInDateTime);
-  date.setFullYear(date.getFullYear() + 10);
-  return date.toISOString();
+  const parts = getIndiaDateTimeParts(checkInDateTime);
+  return toStoredDateTime(
+    `${parts.year + 10}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}`,
+  );
 }
 
 export function formatDateTime(value?: string | null) {
@@ -33,7 +40,8 @@ export function formatDateTime(value?: string | null) {
   return new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+    timeZone: INDIA_TIME_ZONE,
+  }).format(new Date(getDateTimeMs(value)));
 }
 
 export function formatCheckoutDateTime(
@@ -65,12 +73,12 @@ export function isOpenEndedCheckoutDateTime(
 ) {
   if (!checkOutDateTime) return false;
 
-  const checkIn = new Date(checkInDateTime);
-  const checkOut = new Date(checkOutDateTime);
-  const openEndedThreshold = new Date(checkIn);
-  openEndedThreshold.setFullYear(openEndedThreshold.getFullYear() + 9);
+  const checkIn = getIndiaDateTimeParts(checkInDateTime);
+  const threshold = toStoredDateTime(
+    `${checkIn.year + 9}-${pad(checkIn.month)}-${pad(checkIn.day)}T${pad(checkIn.hour)}:${pad(checkIn.minute)}:${pad(checkIn.second)}`,
+  );
 
-  return checkOut.getTime() >= openEndedThreshold.getTime();
+  return getDateTimeMs(checkOutDateTime) >= getDateTimeMs(threshold);
 }
 
 export function isActiveStatus(status: Booking["status"]) {
@@ -81,13 +89,13 @@ export function getBookingDisplayStatus(booking: Booking) {
   if (booking.status === "cancelled") return "Cancelled";
   if (booking.status === "checked_out") return "Checked Out";
 
-  return new Date(booking.check_in_datetime).getTime() <= Date.now()
+  return getDateTimeMs(booking.check_in_datetime) <= Date.now()
     ? "Checked In"
     : "Booked";
 }
 
 export function getRoomDisplayStatus(booking: Booking) {
-  return new Date(booking.check_in_datetime).getTime() <= Date.now()
+  return getDateTimeMs(booking.check_in_datetime) <= Date.now()
     ? ("Checked-in" as const)
     : ("Booked" as const);
 }
@@ -100,8 +108,8 @@ export function overlaps(
 ) {
   // Conflict rule: existing_check_in < new_check_out AND existing_check_out > new_check_in.
   return (
-    new Date(existingCheckIn).getTime() < new Date(newCheckOut).getTime() &&
-    new Date(existingCheckOut).getTime() > new Date(newCheckIn).getTime()
+    getDateTimeMs(existingCheckIn) < getDateTimeMs(newCheckOut) &&
+    getDateTimeMs(existingCheckOut) > getDateTimeMs(newCheckIn)
   );
 }
 
@@ -131,8 +139,8 @@ export function validateBookingInput(input: BookingFormInput) {
     return "Check-out date/time is required.";
   }
   if (
-    new Date(input.check_out_datetime).getTime() <=
-    new Date(input.check_in_datetime).getTime()
+    getDateTimeMs(input.check_out_datetime) <=
+    getDateTimeMs(input.check_in_datetime)
   ) {
     return "Check-out date/time must be after check-in date/time.";
   }
@@ -141,10 +149,45 @@ export function validateBookingInput(input: BookingFormInput) {
 }
 
 export function getDateTimeLocalValue(value: string) {
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60_000);
-  return local.toISOString().slice(0, 16);
+  return toIndiaLocalDateTime(value).slice(0, 16);
+}
+
+export function getCurrentDateTimeLocalValue() {
+  return getDateTimeLocalValue(new Date().toISOString());
+}
+
+export function getDateTimeMs(value: string) {
+  if (EXPLICIT_TIME_ZONE.test(value)) {
+    return new Date(value).getTime();
+  }
+
+  const parts = parseDateTimeParts(value);
+  return (
+    Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second,
+      parts.millisecond,
+    ) -
+    INDIA_OFFSET_MINUTES * 60_000
+  );
+}
+
+export function getIndiaDayKey(value: string) {
+  return toIndiaLocalDateTime(value).slice(0, 10);
+}
+
+export function getIndiaDayStart(value: string) {
+  const parts = getIndiaDateTimeParts(value);
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T00:00:00`;
+}
+
+export function getIndiaDayEnd(value: string) {
+  const parts = getIndiaDateTimeParts(value);
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T23:59:59`;
 }
 
 export function getBookingRooms(booking: Pick<Booking, "room_no" | "room_nos">) {
@@ -154,4 +197,66 @@ export function getBookingRooms(booking: Pick<Booking, "room_no" | "room_nos">) 
 
 export function formatRooms(booking: Pick<Booking, "room_no" | "room_nos">) {
   return getBookingRooms(booking).join(", ");
+}
+
+function toIndiaLocalDateTime(value: string) {
+  const parts = getIndiaDateTimeParts(value);
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}`;
+}
+
+function getIndiaDateTimeParts(value: string) {
+  if (EXPLICIT_TIME_ZONE.test(value)) {
+    return getIndiaPartsFromInstant(new Date(value));
+  }
+
+  return parseDateTimeParts(value);
+}
+
+function parseDateTimeParts(value: string) {
+  const match = DATE_TIME_PARTS.exec(value);
+  if (!match) {
+    throw new Error("Invalid date/time value.");
+  }
+
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(match[4] ?? 0),
+    minute: Number(match[5] ?? 0),
+    second: Number(match[6] ?? 0),
+    millisecond: Number((match[7] ?? "0").padEnd(3, "0")),
+  };
+}
+
+function getIndiaPartsFromInstant(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: INDIA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const value = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+
+  return {
+    year: value.year,
+    month: value.month,
+    day: value.day,
+    hour: value.hour,
+    minute: value.minute,
+    second: value.second,
+    millisecond: 0,
+  };
+}
+
+function pad(value: number) {
+  return String(value).padStart(2, "0");
 }

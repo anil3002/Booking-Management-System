@@ -7,6 +7,7 @@ import {
   getAvailableRooms,
   updateBooking,
 } from "@/lib/bookings";
+import { getDateTimeMs, toStoredDateTime } from "@/lib/booking-utils";
 import { sendWhatsAppNotification } from "@/lib/notifications";
 import type { ActionResult, Booking, BookingFormInput } from "@/lib/types";
 
@@ -23,7 +24,7 @@ export async function checkAvailableRoomsAction(
       };
     }
 
-    if (new Date(checkOutDateTime).getTime() <= new Date(checkInDateTime).getTime()) {
+    if (getDateTimeMs(checkOutDateTime) <= getDateTimeMs(checkInDateTime)) {
       return {
         ok: false,
         message: "Check-out date/time must be after check-in date/time.",
@@ -31,8 +32,8 @@ export async function checkAvailableRoomsAction(
     }
 
     const rooms = await getAvailableRooms(
-      new Date(checkInDateTime).toISOString(),
-      new Date(checkOutDateTime).toISOString(),
+      toStoredDateTime(checkInDateTime),
+      toStoredDateTime(checkOutDateTime),
       excludeBookingId,
     );
 

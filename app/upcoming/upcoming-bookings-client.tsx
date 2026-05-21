@@ -22,7 +22,9 @@ import {
   formatRooms,
   getBookingRooms,
   getDateTimeLocalValue,
+  getDateTimeMs,
   getOpenEndedCheckoutDateTime,
+  toStoredDateTime,
 } from "@/lib/booking-utils";
 import { sendWhatsAppNotification } from "@/lib/notifications";
 import { calculateRoomsTotal } from "@/lib/rooms";
@@ -170,7 +172,7 @@ export function UpcomingBookingsClient({
         }
 
         const rooms = await getAvailableRoomsClient(
-          new Date(form.check_in_datetime).toISOString(),
+          toStoredDateTime(form.check_in_datetime),
           getOpenEndedCheckoutDateTime(form.check_in_datetime),
           selected.id,
         );
@@ -535,11 +537,11 @@ async function loadUpcomingBookings() {
   const bookings = await getActiveBookingsClient();
 
   return bookings
-    .filter((booking) => new Date(booking.check_in_datetime).getTime() > now)
+    .filter((booking) => getDateTimeMs(booking.check_in_datetime) > now)
     .sort(
       (left, right) =>
-        new Date(left.check_in_datetime).getTime() -
-        new Date(right.check_in_datetime).getTime(),
+        getDateTimeMs(left.check_in_datetime) -
+        getDateTimeMs(right.check_in_datetime),
     );
 }
 

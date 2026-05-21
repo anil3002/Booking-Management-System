@@ -7,6 +7,7 @@ import {
   getActiveBookingsClient,
   getAllBookingsClient,
 } from "@/lib/browser-bookings";
+import { getDateTimeMs } from "@/lib/booking-utils";
 import type { Booking } from "@/lib/types";
 
 export function DashboardDetails() {
@@ -80,24 +81,24 @@ async function loadDashboardBookings() {
     .filter((booking) => booking.status === "checked_out")
     .sort(
       (left, right) =>
-        new Date(right.actual_checkout_datetime ?? right.updated_at).getTime() -
-        new Date(left.actual_checkout_datetime ?? left.updated_at).getTime(),
+        getDateTimeMs(right.actual_checkout_datetime ?? right.updated_at) -
+        getDateTimeMs(left.actual_checkout_datetime ?? left.updated_at),
     );
 
   const activeBookings = openBookings
-    .filter((booking) => new Date(booking.check_in_datetime).getTime() <= now)
+    .filter((booking) => getDateTimeMs(booking.check_in_datetime) <= now)
     .sort(
       (left, right) =>
-        new Date(left.check_in_datetime).getTime() -
-        new Date(right.check_in_datetime).getTime(),
+        getDateTimeMs(left.check_in_datetime) -
+        getDateTimeMs(right.check_in_datetime),
     );
 
   const upcomingBookings = openBookings
-    .filter((booking) => new Date(booking.check_in_datetime).getTime() > now)
+    .filter((booking) => getDateTimeMs(booking.check_in_datetime) > now)
     .sort(
       (left, right) =>
-        new Date(left.check_in_datetime).getTime() -
-        new Date(right.check_in_datetime).getTime(),
+        getDateTimeMs(left.check_in_datetime) -
+        getDateTimeMs(right.check_in_datetime),
     );
 
   return {
