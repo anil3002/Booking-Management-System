@@ -12,7 +12,6 @@ import {
 import {
   formatDateTime,
   formatRooms,
-  getCurrentDateTimeLocalValue,
   getDateTimeLocalValue,
   getDateTimeMs,
   roundMoney,
@@ -34,7 +33,9 @@ export function CheckOutClient({ bookings }: CheckOutClientProps) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Booking | null>(bookings[0] ?? null);
   const [discountApplied, setDiscountApplied] = useState<number | "">(0);
-  const [checkoutDateTime, setCheckoutDateTime] = useState(getCurrentDateTimeLocal);
+  const [checkoutDateTime, setCheckoutDateTime] = useState(() =>
+    getDefaultCheckoutDateTime(bookings[0] ?? null),
+  );
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error" | "warning"; text: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,10 +48,11 @@ export function CheckOutClient({ bookings }: CheckOutClientProps) {
       .then((items) => {
         if (!isMounted) return;
         const currentBookings = getCurrentBookings(items);
+        const firstBooking = currentBookings[0] ?? null;
         setLiveBookings(currentBookings);
-        setSelected(currentBookings[0] ?? null);
+        setSelected(firstBooking);
         setDiscountApplied(0);
-        setCheckoutDateTime(getCurrentDateTimeLocal());
+        setCheckoutDateTime(getDefaultCheckoutDateTime(firstBooking));
       })
       .catch((error) => {
         if (!isMounted) return;
@@ -165,7 +167,7 @@ export function CheckOutClient({ bookings }: CheckOutClientProps) {
         });
         setSelected(null);
         setDiscountApplied(0);
-        setCheckoutDateTime(getCurrentDateTimeLocal());
+        setCheckoutDateTime("");
         setShowConfirmation(false);
       } catch (error) {
         setShowConfirmation(false);
@@ -197,7 +199,7 @@ export function CheckOutClient({ bookings }: CheckOutClientProps) {
                 onSelect={(booking) => {
                   setSelected(booking);
                   setDiscountApplied(0);
-                  setCheckoutDateTime(getCurrentDateTimeLocal());
+                  setCheckoutDateTime(getDefaultCheckoutDateTime(booking));
                 }}
               />
             ))
@@ -335,10 +337,6 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-function getCurrentDateTimeLocal() {
-  return getCurrentDateTimeLocalValue();
-}
-
 function calculateFinalPayment(
   booking: Pick<Booking, "advance_taken" | "check_in_datetime" | "room_no" | "room_nos">,
   checkoutDateTime: string,
@@ -361,6 +359,13 @@ function getCurrentBookings(bookings: Booking[]) {
   return bookings.filter(
     (booking) => getDateTimeMs(booking.check_in_datetime) <= now,
   );
+}
+
+function getDefaultCheckoutDateTime(booking: Booking | null) {
+  if (!booking) return "";
+
+  const checkoutMs = getDateTimeMs(booking.check_in_datetime) + 24 * 60 * 60 * 1000;
+  return getDateTimeLocalValue(new Date(checkoutMs).toISOString());
 }
 
 function ReadOnlyAmount({ value }: { value: number }) {

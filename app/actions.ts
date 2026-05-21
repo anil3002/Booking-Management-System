@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  cancelBooking,
   checkoutBooking,
   createBooking,
   getAvailableRooms,
+  getBookingById,
   updateBooking,
 } from "@/lib/bookings";
 import { getDateTimeMs, toStoredDateTime } from "@/lib/booking-utils";
@@ -73,14 +75,39 @@ export async function updateBookingAction(
   input: BookingFormInput,
 ): Promise<ActionResult<Booking>> {
   try {
+    const previousBooking = await getBookingById(id);
     const booking = await updateBooking(id, input);
-    const notification = await sendWhatsAppNotification("modify_booking", booking);
+    const notification = await sendWhatsAppNotification(
+      "modify_booking",
+      booking,
+      undefined,
+      previousBooking ?? undefined,
+    );
     revalidateBookingPages();
     return {
       ok: true,
       message: notification.ok
         ? "Booking updated successfully."
         : "Booking updated, but WhatsApp notification failed.",
+      data: booking,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function cancelBookingAction(
+  id: string,
+): Promise<ActionResult<Booking>> {
+  try {
+    const booking = await cancelBooking(id);
+    const notification = await sendWhatsAppNotification("cancel_booking", booking);
+    revalidateBookingPages();
+    return {
+      ok: true,
+      message: notification.ok
+        ? "Booking removed successfully."
+        : "Booking removed, but WhatsApp notification failed.",
       data: booking,
     };
   } catch (error) {

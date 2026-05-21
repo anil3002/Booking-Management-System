@@ -129,12 +129,18 @@ export function UpcomingBookingsClient({
 
     startTransition(async () => {
       try {
-        await cancelBookingClient(booking.id);
+        const canceledBooking = await cancelBookingClient(booking.id);
+        const notification = await sendWhatsAppNotification(
+          "cancel_booking",
+          canceledBooking,
+        );
         const items = await loadUpcomingBookings();
         setLiveBookings(items);
         setMessage({
-          type: "success",
-          text: "Booking removed successfully.",
+          type: notification.ok ? "success" : "info",
+          text: notification.ok
+            ? "Booking removed successfully."
+            : "Booking removed, but WhatsApp notification failed.",
         });
       } catch (error) {
         setRemovedIds((current) => {
@@ -224,6 +230,8 @@ export function UpcomingBookingsClient({
         const notification = await sendWhatsAppNotification(
           "modify_booking",
           booking,
+          undefined,
+          selected,
         );
         const items = await loadUpcomingBookings();
         const updatedRooms = getBookingRooms(booking);

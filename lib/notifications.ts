@@ -1,6 +1,10 @@
 import type { Booking } from "@/lib/types";
 
-export type NotificationType = "new_booking" | "checkout" | "modify_booking";
+export type NotificationType =
+  | "new_booking"
+  | "checkout"
+  | "modify_booking"
+  | "cancel_booking";
 
 type NotificationResult = {
   ok: boolean;
@@ -11,12 +15,13 @@ export async function sendWhatsAppNotification(
   type: NotificationType,
   booking: Booking,
   amountReceived?: number,
+  previousBooking?: Booking,
 ): Promise<NotificationResult> {
   try {
     const response = await fetch(getWhatsAppApiUrl(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, booking, amountReceived }),
+      body: JSON.stringify({ type, booking, amountReceived, previousBooking }),
     });
     const result = (await response.json()) as NotificationResult;
 

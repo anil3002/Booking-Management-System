@@ -2,19 +2,24 @@ import twilio from "twilio";
 import { formatDateTime } from "@/lib/booking-utils";
 import type { Booking } from "@/lib/types";
 
-type WhatsAppNotificationType = "new_booking" | "checkout" | "modify_booking";
+type WhatsAppNotificationType =
+  | "new_booking"
+  | "checkout"
+  | "modify_booking"
+  | "cancel_booking";
 
 type WhatsAppRequestBody = {
   type?: WhatsAppNotificationType;
   booking?: Booking;
   amountReceived?: number;
+  previousBooking?: Booking;
 };
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const { type, booking, amountReceived } =
+    const { type, booking, amountReceived, previousBooking } =
       (await request.json()) as WhatsAppRequestBody;
 
     if (!type || !booking) {
@@ -50,7 +55,12 @@ export async function POST(request: Request) {
     const message = await client.messages.create({
       from,
       to,
-      body: buildWhatsAppMessage(type, booking, amountReceived ?? 0),
+      body: buildWhatsAppMessage(
+        type,
+        booking,
+        amountReceived ?? 0,
+        previousBooking,
+      ),
     });
 
     return Response.json({ ok: true, sid: message.sid });
@@ -72,50 +82,44 @@ function buildWhatsAppMessage(
   type: WhatsAppNotificationType,
   booking: Booking,
   amountReceived: number,
+  previousBooking?: Booking,
 ) {
   if (type === "checkout") {
+    const discountApplied = getCheckoutDiscount(booking, amountReceived);
+
     return [
-      "✅ Customer Checked Out",
-      `Room No: ${formatRooms(booking)}`,
-      `Guest Name: ${booking.guest_name}`,
-      `Phone: ${booking.customer_phone_number || "-"}`,
-      `Actual Checkout: ${formatOptionalDateTime(booking.actual_checkout_datetime)}`,
-      `Total owing: ${booking.total_payment}`,
-      `Advance paid: ${booking.advance_taken}`,
-      `Balance paid: ${amountReceived}`,
-      `Remaining Balance: ${booking.remaining_balance}`,
+      "Customer Checked Out",
+      `Guest: ${booking.guest_name}`,
+      `Rooms: ${formatRooms(booking)}`,
+      `Check-in: ${formatDateTime(booking.check_in_datetime)}`,
+      `Check-out: ${formatOptionalDateTime(booking.actual_checkout_datetime)}`,
+      `Total payment: Rs ${booking.total_payment}`,
+      `Advance taken: Rs ${booking.advance_taken}`,
+      `Discount applied: Rs ${discountApplied}`,
+      `Final payment received: Rs ${amountReceived}`,
     ].join("\n");
   }
 
   if (type === "modify_booking") {
+    const originalBooking = previousBooking ?? booking;
+
     return [
-      "✏️ Booking Modified",
-      `Room No: ${formatRooms(booking)}`,
-      `Guest Name: ${booking.guest_name}`,
-      `Phone: ${booking.customer_phone_number || "-"}`,
-      `Updated Check-in: ${formatDateTime(booking.check_in_datetime)}`,
-      `Updated Check-out: ${formatDateTime(booking.check_out_datetime)}`,
-      `Advance: ${booking.advance_taken}`,
-      `Total: ${booking.total_payment}`,
-      `Remaining: ${booking.remaining_balance}`,
-      `Notes: ${booking.notes || "-"}`,
+      "Booking Edited",
+      "",
+      ...formatBookingDetails(originalBooking),
+      "",
+      "Updated Details:",
+      ...formatUpdatedDetails(originalBooking, booking),
     ].join("\n");
   }
 
+  if (type === "cancel_booking") {
+    return ["Booking Canceled", "", ...formatBookingDetails(booking)].join("\n");
+  }
+
   return [
-    "🏨 New Booking / Check-in",
-    `Room No: ${formatRooms(booking)}`,
-    `Guest Name: ${booking.guest_name}`,
-    `Phone: ${booking.customer_phone_number || "-"}`,
-    `Persons: ${booking.number_of_persons}`,
-    `Children: ${booking.number_of_children}`,
-    `ID: ${booking.id_type} ${booking.id_number}`,
-    `Check-in: ${formatDateTime(booking.check_in_datetime)}`,
-    `Check-out: ${formatDateTime(booking.check_out_datetime)}`,
-    `Advance: ${booking.advance_taken}`,
-    `Total: ${booking.total_payment}`,
-    `Remaining: ${booking.remaining_balance}`,
-    `Notes: ${booking.notes || "-"}`,
+    "Check-in / New Booking",
+    ...formatBookingDetails(booking),
   ].join("\n");
 }
 
@@ -125,6 +129,100 @@ function formatRooms(booking: Booking) {
 
 function formatOptionalDateTime(value: string | null) {
   return value ? formatDateTime(value) : "-";
+}
+
+function getCheckoutDiscount(booking: Booking, amountReceived: number) {
+  return Math.max(
+    0,
+    booking.total_payment -
+      booking.advance_taken -
+      amountReceived -
+      booking.remaining_balance,
+  );
+}
+
+function formatBookingDetails(booking: Booking) {
+  return [
+    `Guest: ${booking.guest_name}`,
+    `Phone: ${booking.customer_phone_number || "-"}`,
+    `Rooms: ${formatRooms(booking)}`,
+    `Check-in: ${formatDateTime(booking.check_in_datetime)}`,
+    `Persons: ${booking.number_of_persons}`,
+    `Children: ${booking.number_of_children}`,
+    `ID: ${booking.id_type} ${booking.id_number}`,
+    `Advance: Rs ${booking.advance_taken}`,
+    ...(booking.notes?.trim() ? [`Notes: ${booking.notes}`] : []),
+  ];
+}
+
+function formatUpdatedDetails(previousBooking: Booking, booking: Booking) {
+  const details = [
+    getUpdatedDetail(
+      "Guest",
+      previousBooking.guest_name,
+      booking.guest_name,
+      booking.guest_name,
+    ),
+    getUpdatedDetail(
+      "Phone",
+      previousBooking.customer_phone_number,
+      booking.customer_phone_number,
+      booking.customer_phone_number || "-",
+    ),
+    getUpdatedDetail(
+      "Rooms",
+      formatRooms(previousBooking),
+      formatRooms(booking),
+      formatRooms(booking),
+    ),
+    getUpdatedDetail(
+      "Check-in",
+      previousBooking.check_in_datetime,
+      booking.check_in_datetime,
+      formatDateTime(booking.check_in_datetime),
+    ),
+    getUpdatedDetail(
+      "Persons",
+      previousBooking.number_of_persons,
+      booking.number_of_persons,
+      String(booking.number_of_persons),
+    ),
+    getUpdatedDetail(
+      "Children",
+      previousBooking.number_of_children,
+      booking.number_of_children,
+      String(booking.number_of_children),
+    ),
+    getUpdatedDetail(
+      "ID",
+      `${previousBooking.id_type} ${previousBooking.id_number}`,
+      `${booking.id_type} ${booking.id_number}`,
+      `${booking.id_type} ${booking.id_number}`,
+    ),
+    getUpdatedDetail(
+      "Advance",
+      previousBooking.advance_taken,
+      booking.advance_taken,
+      `Rs ${booking.advance_taken}`,
+    ),
+    getUpdatedDetail(
+      "Notes",
+      previousBooking.notes?.trim() ?? "",
+      booking.notes?.trim() ?? "",
+      booking.notes?.trim() || "-",
+    ),
+  ].filter((detail): detail is string => Boolean(detail));
+
+  return details.length ? details : ["No details changed"];
+}
+
+function getUpdatedDetail(
+  label: string,
+  previousValue: string | number,
+  nextValue: string | number,
+  formattedNextValue: string,
+) {
+  return previousValue === nextValue ? null : `${label}: ${formattedNextValue}`;
 }
 
 function getErrorMessage(error: unknown) {

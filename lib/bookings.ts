@@ -234,6 +234,37 @@ export async function updateBooking(id: string, input: BookingFormInput) {
   return updated;
 }
 
+export async function cancelBooking(id: string) {
+  const updatePayload = {
+    status: "cancelled" as const,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .update(updatePayload)
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error) throw new Error(error.message);
+      return data;
+    } catch (error) {
+      throw new Error(getSupabaseMutationMessage(error));
+    }
+  }
+
+  const bookings = getMockBookings();
+  const booking = bookings.find((item) => item.id === id);
+  if (!booking) throw new Error("Booking not found.");
+
+  const updated: Booking = { ...booking, ...updatePayload };
+  setMockBookings(bookings.map((item) => (item.id === id ? updated : item)));
+  return updated;
+}
+
 export async function checkoutBooking(
   id: string,
   amountReceived: number,
