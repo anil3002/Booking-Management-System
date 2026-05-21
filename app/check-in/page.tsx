@@ -5,7 +5,7 @@ export default function CheckInPage() {
   return (
     <PageShell
       title="Check-in / New Booking"
-      description="Choose the stay dates first, check availability, then save the guest details."
+      description="Choose the check-in date/time, check availability, then save the guest details."
     >
       <CheckInForm />
     </PageShell>

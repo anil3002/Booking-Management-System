@@ -2,9 +2,8 @@ import { ActionButton } from "@/components/action-button";
 import {
   CheckInIcon,
   CheckOutIcon,
-  ModifyBookingIcon,
+  UpcomingBookingsIcon,
 } from "@/components/action-icons";
-import { DashboardDetails } from "@/app/dashboard-details";
 import { PageShell } from "@/components/page-shell";
 
 export default function Home() {
@@ -13,7 +12,7 @@ export default function Home() {
       title="Staff Dashboard"
       description="Simple room booking, checkout, and room availability for 10 rooms."
     >
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         <ActionButton
           href="/check-in"
           title="Check-in / New Booking"
@@ -27,14 +26,12 @@ export default function Home() {
           icon={<CheckOutIcon className="h-7 w-7" />}
         />
         <ActionButton
-          href="/modify"
-          title="Modify Booking"
-          description="Search and update guest, date, room, or payment details."
-          icon={<ModifyBookingIcon className="h-7 w-7" />}
+          href="/upcoming"
+          title="Upcoming Bookings"
+          description="Review future bookings and remove reservations if needed."
+          icon={<UpcomingBookingsIcon className="h-7 w-7" />}
         />
       </section>
-
-      <DashboardDetails />
     </PageShell>
   );
 }

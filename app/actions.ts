@@ -90,9 +90,18 @@ export async function updateBookingAction(
 export async function checkoutBookingAction(
   id: string,
   amountReceived: number,
+  checkoutDateTime?: string,
+  discountApplied?: number,
+  totalPayment?: number,
 ): Promise<ActionResult<Booking>> {
   try {
-    const booking = await checkoutBooking(id, amountReceived);
+    const booking = await checkoutBooking(
+      id,
+      amountReceived,
+      checkoutDateTime,
+      discountApplied,
+      totalPayment,
+    );
     const notification = await sendWhatsAppNotification(
       "checkout",
       booking,
@@ -114,7 +123,7 @@ export async function checkoutBookingAction(
 function revalidateBookingPages() {
   revalidatePath("/");
   revalidatePath("/check-out");
-  revalidatePath("/modify");
+  revalidatePath("/upcoming");
   revalidatePath("/rooms");
 }
 

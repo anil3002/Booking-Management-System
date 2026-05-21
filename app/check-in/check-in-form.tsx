@@ -1,16 +1,21 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Alert } from "@/components/alert";
 import {
   Field,
+  CurrencyInput,
   PrimaryButton,
   TextArea,
   TextInput,
   SelectInput,
 } from "@/components/form-controls";
 import type { BookingFormInput } from "@/lib/types";
-import { calculateRemainingBalance } from "@/lib/booking-utils";
+import {
+  formatDateTime,
+  getOpenEndedCheckoutDateTime,
+} from "@/lib/booking-utils";
 import {
   createBookingsClient,
   getAvailableRoomsClient,
@@ -33,16 +38,13 @@ const initialForm: BookingFormInput = {
 };
 
 export function CheckInForm() {
+  const router = useRouter();
   const [form, setForm] = useState<BookingFormInput>(initialForm);
   const [availableRooms, setAvailableRooms] = useState<string[]>([]);
   const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error" | "info" | "warning"; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  const remainingBalance = useMemo(
-    () => calculateRemainingBalance(form.total_payment, form.advance_taken),
-    [form.total_payment, form.advance_taken],
-  );
 
   function update<K extends keyof BookingFormInput>(
     key: K,
@@ -55,19 +57,13 @@ export function CheckInForm() {
     setMessage(null);
     startTransition(async () => {
       try {
-        if (!form.check_in_datetime || !form.check_out_datetime) {
-          throw new Error("Choose check-in and check-out date/time first.");
-        }
-        if (
-          new Date(form.check_out_datetime).getTime() <=
-          new Date(form.check_in_datetime).getTime()
-        ) {
-          throw new Error("Check-out date/time must be after check-in date/time.");
+        if (!form.check_in_datetime) {
+          throw new Error("Choose check-in date/time first.");
         }
 
         const rooms = await getAvailableRoomsClient(
           new Date(form.check_in_datetime).toISOString(),
-          new Date(form.check_out_datetime).toISOString(),
+          getOpenEndedCheckoutDateTime(form.check_in_datetime),
         );
         setAvailableRooms(rooms);
         setSelectedRooms([]);
@@ -88,22 +84,28 @@ export function CheckInForm() {
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
+    setShowConfirmation(true);
+  }
+
+  function confirmBooking() {
+    setMessage(null);
     startTransition(async () => {
       try {
-        const booking = await createBookingsClient(form, selectedRooms);
+        const booking = await createBookingsClient(
+          { ...form, total_payment: 0 },
+          selectedRooms,
+        );
         const notification = await sendWhatsAppNotification("new_booking", booking);
         setForm(initialForm);
         setAvailableRooms([]);
         setSelectedRooms([]);
-        setMessage({
-          type: notification.ok ? "success" : "warning",
-          text: notification.ok
-            ? selectedRooms.length === 1
-              ? "Booking saved successfully."
-              : `Booking saved successfully for ${selectedRooms.length} rooms.`
-            : "Booking saved, but WhatsApp notification failed.",
-        });
+        setShowConfirmation(false);
+        if (!notification.ok) {
+          console.warn("Booking saved, but WhatsApp notification failed.");
+        }
+        router.push("/");
       } catch (error) {
+        setShowConfirmation(false);
         setMessage({ type: "error", text: getErrorMessage(error) });
       }
     });
@@ -118,6 +120,7 @@ export function CheckInForm() {
   }
 
   return (
+    <>
     <form onSubmit={submit} className="grid gap-5 rounded-lg border border-teal-200/80 bg-teal-50/80 p-4 shadow-xl shadow-teal-900/10 backdrop-blur-md sm:p-6">
       {message ? <Alert type={message.type} message={message.text} /> : null}
 
@@ -128,14 +131,6 @@ export function CheckInForm() {
             required
             value={form.check_in_datetime}
             onChange={(event) => update("check_in_datetime", event.target.value)}
-          />
-        </Field>
-        <Field label="Check-out date/time">
-          <TextInput
-            type="datetime-local"
-            required
-            value={form.check_out_datetime}
-            onChange={(event) => update("check_out_datetime", event.target.value)}
           />
         </Field>
       </div>
@@ -186,7 +181,7 @@ export function CheckInForm() {
         )}
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4">
         <Field label="Guest Name">
           <TextInput
             required
@@ -216,6 +211,17 @@ export function CheckInForm() {
             }
           />
         </Field>
+        <Field label="Number of children">
+          <TextInput
+            type="number"
+            min={0}
+            placeholder="0"
+            value={form.number_of_children}
+            onChange={(event) =>
+              update("number_of_children", parseNumberInput(event.target.value))
+            }
+          />
+        </Field>
         <Field label="Aadhaar / PAN">
           <SelectInput
             value={form.id_type}
@@ -232,43 +238,18 @@ export function CheckInForm() {
             onChange={(event) => update("id_number", event.target.value)}
           />
         </Field>
-        <Field label="Number of children">
-          <TextInput
-            type="number"
-            min={0}
-            placeholder="0"
-            value={form.number_of_children}
-            onChange={(event) =>
-              update("number_of_children", parseNumberInput(event.target.value))
-            }
-          />
-        </Field>
         <Field label="Advance taken">
-          <TextInput
+          <CurrencyInput
             type="number"
             min={0}
-            step="0.01"
+            step={1}
+            inputMode="numeric"
             placeholder="0"
             value={form.advance_taken}
             onChange={(event) =>
               update("advance_taken", parseNumberInput(event.target.value))
             }
           />
-        </Field>
-        <Field label="Total payment">
-          <TextInput
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="0"
-            value={form.total_payment}
-            onChange={(event) =>
-              update("total_payment", parseNumberInput(event.target.value))
-            }
-          />
-        </Field>
-        <Field label="Remaining balance">
-          <TextInput value={`Rs ${remainingBalance}`} readOnly />
         </Field>
       </div>
 
@@ -287,6 +268,73 @@ export function CheckInForm() {
             : "Save Booking"}
       </PrimaryButton>
     </form>
+
+    {showConfirmation ? (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 backdrop-blur-sm">
+        <div className="w-full max-w-lg rounded-lg border border-teal-200 bg-teal-50 p-5 shadow-2xl shadow-slate-950/30">
+          <h2 className="text-xl font-bold text-slate-950">Confirm booking</h2>
+          <div className="mt-4 grid gap-2 text-sm text-slate-700">
+            <p>
+              <span className="font-bold text-slate-950">Guest:</span>{" "}
+              {form.guest_name}
+            </p>
+            <p>
+              <span className="font-bold text-slate-950">Phone:</span>{" "}
+              {form.customer_phone_number}
+            </p>
+            <p>
+              <span className="font-bold text-slate-950">Rooms:</span>{" "}
+              {selectedRooms.join(", ")}
+            </p>
+            <p>
+              <span className="font-bold text-slate-950">Check-in:</span>{" "}
+              {formatDateTime(form.check_in_datetime)}
+            </p>
+            <p>
+              <span className="font-bold text-slate-950">Persons:</span>{" "}
+              {form.number_of_persons || 0}
+            </p>
+            <p>
+              <span className="font-bold text-slate-950">Children:</span>{" "}
+              {form.number_of_children || 0}
+            </p>
+            <p>
+              <span className="font-bold text-slate-950">ID:</span>{" "}
+              {form.id_type} {form.id_number}
+            </p>
+            <p>
+              <span className="font-bold text-slate-950">Advance:</span> Rs{" "}
+              {form.advance_taken || 0}
+            </p>
+            {form.notes.trim() ? (
+              <p>
+                <span className="font-bold text-slate-950">Notes:</span>{" "}
+                {form.notes}
+              </p>
+            ) : null}
+          </div>
+          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setShowConfirmation(false)}
+              disabled={isPending}
+              className="h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmBooking}
+              disabled={isPending}
+              className="h-11 rounded-md bg-teal-700 px-4 text-sm font-bold text-white shadow-sm hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isPending ? "Saving..." : "Confirm booking"}
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
 

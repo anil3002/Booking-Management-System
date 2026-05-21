@@ -1,5 +1,6 @@
 import type { Booking } from "@/lib/types";
 import {
+  formatCheckoutDateTime,
   formatDateTime,
   formatRooms,
   getBookingDisplayStatus,
@@ -10,6 +11,7 @@ type BookingCardProps = {
   onSelect?: (booking: Booking) => void;
   selected?: boolean;
   isDisabled?: boolean;
+  onEdit?: (booking: Booking) => void;
   onRemove?: (booking: Booking) => void;
 };
 
@@ -18,6 +20,7 @@ export function BookingCard({
   onSelect,
   selected,
   isDisabled,
+  onEdit,
   onRemove,
 }: BookingCardProps) {
   const content = (
@@ -36,13 +39,27 @@ export function BookingCard({
       </div>
       <div className="mt-4 grid gap-2 text-sm text-slate-700">
         <p>Check-in: {formatDateTime(booking.check_in_datetime)}</p>
-        <p>Check-out: {formatDateTime(booking.check_out_datetime)}</p>
+        <p>Check-out: {formatCheckoutDateTime(booking)}</p>
         <p>Phone: {booking.customer_phone_number || "-"}</p>
         <p>Balance: Rs {booking.remaining_balance}</p>
         <p>ID: {booking.id_type} {booking.id_number}</p>
       </div>
-      {onRemove && !isDisabled ? (
-        <div className="mt-4 flex justify-end">
+      {(onEdit || onRemove) && !isDisabled ? (
+        <div className="mt-4 flex justify-end gap-2">
+          {onEdit ? (
+            <button
+              type="button"
+              disabled={isDisabled}
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(booking);
+              }}
+              className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-bold text-teal-700 shadow-sm hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Edit
+            </button>
+          ) : null}
+          {onRemove ? (
           <button
             type="button"
             disabled={isDisabled}
@@ -54,6 +71,7 @@ export function BookingCard({
           >
             Remove
           </button>
+          ) : null}
         </div>
       ) : null}
     </>

@@ -12,14 +12,14 @@ export function ActionButton({ href, title, description, icon }: ActionButtonPro
   return (
     <Link
       href={href}
-      className="flex min-h-28 items-center gap-4 rounded-lg border border-rose-200/80 bg-rose-50/80 p-5 shadow-xl shadow-rose-900/10 backdrop-blur-md transition hover:border-teal-300 hover:bg-teal-50/90"
+      className="flex min-h-40 items-center gap-7 rounded-[18px] border border-slate-950/25 bg-slate-950/72 p-6 shadow-xl shadow-slate-950/15 backdrop-blur-md transition hover:border-emerald-400/60 hover:bg-slate-950/82"
     >
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-teal-200 text-teal-950">
+      <span className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-xl bg-emerald-950/80 text-emerald-300">
         {icon}
       </span>
       <span>
-        <span className="block text-lg font-bold text-slate-950">{title}</span>
-        <span className="mt-1 block text-sm leading-5 text-slate-600">
+        <span className="block text-xl font-extrabold text-white">{title}</span>
+        <span className="mt-2 block text-base leading-6 text-slate-300">
           {description}
         </span>
       </span>

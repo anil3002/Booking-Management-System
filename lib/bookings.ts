@@ -10,8 +10,10 @@ import type {
 import {
   calculateRemainingBalance,
   getBookingRooms,
+  getOpenEndedCheckoutDateTime,
   getRoomDisplayStatus,
   isActiveStatus,
+  isOpenEndedCheckoutDateTime,
   overlaps,
   roundMoney,
   toStoredDateTime,
@@ -102,11 +104,12 @@ export async function checkBookingConflict(
 }
 
 export async function createBooking(input: BookingFormInput) {
-  const validationError = validateBookingInput(input);
+  const normalizedInput = withOpenEndedCheckout(input);
+  const validationError = validateBookingInput(normalizedInput);
   if (validationError) throw new Error(validationError);
 
-  const checkIn = toStoredDateTime(input.check_in_datetime);
-  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const checkIn = toStoredDateTime(normalizedInput.check_in_datetime);
+  const checkOut = toStoredDateTime(normalizedInput.check_out_datetime);
   const hasConflict = await checkBookingConflict(input.room_no, checkIn, checkOut);
 
   if (hasConflict) {
@@ -128,9 +131,9 @@ export async function createBooking(input: BookingFormInput) {
     actual_checkout_datetime: null,
     advance_taken: roundMoney(toNumber(input.advance_taken)),
     total_payment: roundMoney(toNumber(input.total_payment)),
-    remaining_balance: calculateRemainingBalance(
-      input.total_payment,
-      input.advance_taken,
+    remaining_balance: Math.max(
+      0,
+      calculateRemainingBalance(input.total_payment, input.advance_taken),
     ),
     notes: input.notes.trim(),
     status: "checked_in" as const,
@@ -225,9 +228,20 @@ export async function updateBooking(id: string, input: BookingFormInput) {
   return updated;
 }
 
-export async function checkoutBooking(id: string, amountReceived: number) {
+export async function checkoutBooking(
+  id: string,
+  amountReceived: number,
+  checkoutDateTime = new Date().toISOString(),
+  discountApplied = 0,
+  totalPayment?: number,
+) {
   const amount = roundMoney(amountReceived);
   if (amount < 0) throw new Error("Final payment cannot be negative.");
+  const discount = roundMoney(discountApplied);
+  if (discount < 0) throw new Error("Discount applied cannot be negative.");
+  if (!Number.isInteger(discount)) {
+    throw new Error("Discount applied must be a whole number.");
+  }
 
   const bookings = await listBookings();
   const booking = bookings.find((item) => item.id === id);
@@ -235,11 +249,25 @@ export async function checkoutBooking(id: string, amountReceived: number) {
   if (!isActiveStatus(booking.status)) {
     throw new Error("Only active bookings can be checked out.");
   }
+  const total = roundMoney(totalPayment ?? booking.total_payment);
+  if (total < 0) throw new Error("Total payment cannot be negative.");
+  if (discount > total - booking.advance_taken) {
+    throw new Error("Discount applied cannot be more than the remaining balance.");
+  }
 
-  const remainingBalance = roundMoney(booking.remaining_balance - amount);
+  const checkoutAt = toStoredDateTime(checkoutDateTime);
+  if (new Date(checkoutAt).getTime() <= new Date(booking.check_in_datetime).getTime()) {
+    throw new Error("Check-out date/time must be after check-in date/time.");
+  }
+
+  const remainingBalance = roundMoney(
+    Math.max(0, total - booking.advance_taken - discount - amount),
+  );
   const updatePayload = {
     status: "checked_out" as const,
-    actual_checkout_datetime: new Date().toISOString(),
+    check_out_datetime: checkoutAt,
+    actual_checkout_datetime: checkoutAt,
+    total_payment: total,
     remaining_balance: remainingBalance,
     updated_at: new Date().toISOString(),
   };
@@ -265,6 +293,24 @@ export async function checkoutBooking(id: string, amountReceived: number) {
     getMockBookings().map((item) => (item.id === id ? updated : item)),
   );
   return updated;
+}
+
+function withOpenEndedCheckout(input: BookingFormInput): BookingFormInput {
+  if (input.check_out_datetime || !input.check_in_datetime) return input;
+
+  return {
+    ...input,
+    check_out_datetime: getOpenEndedCheckoutDateTime(input.check_in_datetime),
+  };
+}
+
+function getVisibleCheckoutDateTime(booking: Booking) {
+  return isOpenEndedCheckoutDateTime(
+    booking.check_in_datetime,
+    booking.check_out_datetime,
+  )
+    ? undefined
+    : booking.check_out_datetime;
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {
@@ -352,7 +398,7 @@ export async function getRoomStatuses(): Promise<RoomStatus[]> {
           room_no: room,
           status: "Booked",
           guest_name: future.guest_name,
-          check_out_datetime: future.check_out_datetime,
+          check_out_datetime: getVisibleCheckoutDateTime(future),
         };
       }
 
@@ -363,7 +409,7 @@ export async function getRoomStatuses(): Promise<RoomStatus[]> {
       room_no: room,
       status: getRoomDisplayStatus(current),
       guest_name: current.guest_name,
-      check_out_datetime: current.check_out_datetime,
+      check_out_datetime: getVisibleCheckoutDateTime(current),
     };
   });
 }

@@ -46,7 +46,7 @@ export function CheckOutIcon({ className }: IconProps) {
   );
 }
 
-export function ModifyBookingIcon({ className }: IconProps) {
+export function UpcomingBookingsIcon({ className }: IconProps) {
   return (
     <svg
       className={className}
@@ -58,11 +58,12 @@ export function ModifyBookingIcon({ className }: IconProps) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M4 6h11" />
-      <path d="M4 12h8" />
-      <path d="M4 18h6" />
-      <path d="M15.5 19.5 21 14l-2-2-5.5 5.5L13 20z" />
-      <path d="m18 12 2 2" />
+      <path d="M8 2v4" />
+      <path d="M16 2v4" />
+      <path d="M3 10h18" />
+      <path d="M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+      <path d="M9 15h6" />
+      <path d="M12 12v6" />
     </svg>
   );
 }

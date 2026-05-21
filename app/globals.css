@@ -8,14 +8,14 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: Arial, Helvetica, sans-serif;
+  --font-sans: Inter, Arial, Helvetica, sans-serif;
   --font-mono: "Courier New", monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Inter, Arial, Helvetica, sans-serif;
 }
 
 body::before {
@@ -23,9 +23,17 @@ body::before {
   inset: 0;
   z-index: -2;
   content: "";
-  background:
-    linear-gradient(135deg, #ffedd5 0%, #fde68a 24%, #99f6e4 52%, #bfdbfe 76%, #fbcfe8 100%);
+  background: linear-gradient(
+    135deg,
+    #facdbf 0%,
+    #fff1a5 20%,
+    #b8f3d0 38%,
+    #87e4df 56%,
+    #c4d8ee 76%,
+    #f2cfe5 100%
+  );
   background-attachment: fixed;
+  pointer-events: none;
 }
 
 body::after {
@@ -33,11 +41,7 @@ body::after {
   inset: 0;
   z-index: -1;
   content: "";
-  background:
-    radial-gradient(circle at 12% 18%, rgba(244, 114, 182, 0.5), transparent 18rem),
-    radial-gradient(circle at 84% 14%, rgba(45, 212, 191, 0.55), transparent 20rem),
-    radial-gradient(circle at 78% 82%, rgba(251, 146, 60, 0.42), transparent 18rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 247, 237, 0.28));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 247, 237, 0.22));
   pointer-events: none;
 }
 

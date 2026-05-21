@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AppNav } from "@/components/app-nav";
 
 type PageShellProps = {
   title: string;
@@ -10,30 +11,25 @@ type PageShellProps = {
 export function PageShell({ title, description, children }: PageShellProps) {
   return (
     <main className="min-h-screen text-slate-950">
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-5 sm:px-6 lg:px-8">
-        <header className="mb-5 flex items-start justify-between gap-4 rounded-lg border border-amber-200/80 bg-amber-50/80 p-4 shadow-xl shadow-orange-900/10 backdrop-blur-md">
-          <div>
+      <div className="mx-auto flex min-h-screen w-full max-w-[1520px] flex-col px-5 py-6 sm:px-8 lg:px-10">
+        <header className="mb-10 flex flex-col gap-8 rounded-[18px] border border-slate-950/25 bg-slate-950/78 p-6 shadow-2xl shadow-slate-950/25 backdrop-blur-md sm:p-7 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0">
             <Link
               href="/"
-              className="text-sm font-semibold text-rose-700 hover:text-slate-950"
+              className="text-sm font-extrabold uppercase tracking-[0.42em] text-emerald-300 hover:text-emerald-200"
             >
-              Hotel Booking
+              Hotel Operations
             </Link>
-            <h1 className="mt-2 text-3xl font-bold tracking-normal text-slate-950">
+            <h1 className="mt-5 text-5xl font-extrabold leading-none tracking-normal text-white sm:text-6xl xl:max-w-[760px]">
               {title}
             </h1>
             {description ? (
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+              <p className="mt-6 max-w-3xl text-lg leading-7 text-slate-300 sm:text-xl">
                 {description}
               </p>
             ) : null}
           </div>
-          <Link
-            href="/rooms"
-            className="rounded-md border border-teal-200 bg-teal-100 px-3 py-2 text-sm font-semibold text-teal-900 shadow-sm hover:bg-teal-200"
-          >
-            Rooms
-          </Link>
+          <AppNav />
         </header>
         {children}
       </div>

@@ -5,8 +5,10 @@ import { ROOMS } from "@/lib/rooms";
 import {
   calculateRemainingBalance,
   getBookingRooms,
+  getOpenEndedCheckoutDateTime,
   getRoomDisplayStatus,
   isActiveStatus,
+  isOpenEndedCheckoutDateTime,
   overlaps,
   roundMoney,
   toNumber,
@@ -138,7 +140,7 @@ export async function getRoomStatusesClient() {
           room_no: room,
           status: "Booked" as const,
           guest_name: future.guest_name,
-          check_out_datetime: future.check_out_datetime,
+          check_out_datetime: getVisibleCheckoutDateTime(future),
         };
       }
 
@@ -149,7 +151,7 @@ export async function getRoomStatusesClient() {
       room_no: room,
       status: getRoomDisplayStatus(current),
       guest_name: current.guest_name,
-      check_out_datetime: current.check_out_datetime,
+      check_out_datetime: getVisibleCheckoutDateTime(current),
     };
   });
 }
@@ -225,11 +227,12 @@ export async function createBookingClient(input: BookingFormInput) {
     throw new Error("Supabase URL/key are missing in .env.local.");
   }
 
-  const validationError = validateBookingInput(input);
+  const normalizedInput = withOpenEndedCheckout(input);
+  const validationError = validateBookingInput(normalizedInput);
   if (validationError) throw new Error(validationError);
 
-  const checkIn = toStoredDateTime(input.check_in_datetime);
-  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const checkIn = toStoredDateTime(normalizedInput.check_in_datetime);
+  const checkOut = toStoredDateTime(normalizedInput.check_out_datetime);
   const hasConflict = await checkBookingConflictClient(
     input.room_no,
     checkIn,
@@ -256,9 +259,9 @@ export async function createBookingClient(input: BookingFormInput) {
       actual_checkout_datetime: null,
       advance_taken: roundMoney(toNumber(input.advance_taken)),
       total_payment: roundMoney(toNumber(input.total_payment)),
-      remaining_balance: calculateRemainingBalance(
-        input.total_payment,
-        input.advance_taken,
+      remaining_balance: Math.max(
+        0,
+        calculateRemainingBalance(input.total_payment, input.advance_taken),
       ),
       notes: input.notes.trim(),
       status: "checked_in",
@@ -282,14 +285,15 @@ export async function createBookingsClient(
     throw new Error("Select at least one available room.");
   }
 
+  const normalizedInput = withOpenEndedCheckout(input);
   const validationError = validateBookingInput({
-    ...input,
+    ...normalizedInput,
     room_no: roomNumbers[0],
   });
   if (validationError) throw new Error(validationError);
 
-  const checkIn = toStoredDateTime(input.check_in_datetime);
-  const checkOut = toStoredDateTime(input.check_out_datetime);
+  const checkIn = toStoredDateTime(normalizedInput.check_in_datetime);
+  const checkOut = toStoredDateTime(normalizedInput.check_out_datetime);
   const availableRooms = await getAvailableRoomsClient(checkIn, checkOut);
   const unavailableSelectedRooms = roomNumbers.filter(
     (roomNo) => !availableRooms.includes(roomNo as (typeof ROOMS)[number]),
@@ -315,9 +319,9 @@ export async function createBookingsClient(
     actual_checkout_datetime: null,
     advance_taken: roundMoney(toNumber(input.advance_taken)),
     total_payment: roundMoney(toNumber(input.total_payment)),
-    remaining_balance: calculateRemainingBalance(
-      input.total_payment,
-      input.advance_taken,
+    remaining_balance: Math.max(
+      0,
+      calculateRemainingBalance(input.total_payment, input.advance_taken),
     ),
     notes: input.notes.trim(),
     status: "checked_in",
@@ -383,6 +387,68 @@ export async function updateBookingClient(id: string, input: BookingFormInput) {
   return data as Booking;
 }
 
+export async function updateBookingRoomsClient(
+  id: string,
+  input: BookingFormInput,
+  roomNumbers: string[],
+) {
+  if (!browserSupabase) {
+    throw new Error("Supabase URL/key are missing in .env.local.");
+  }
+
+  if (!roomNumbers.length) {
+    throw new Error("Select at least one available room.");
+  }
+
+  const normalizedInput = withOpenEndedCheckout(input);
+  const validationError = validateBookingInput({
+    ...normalizedInput,
+    room_no: roomNumbers[0],
+  });
+  if (validationError) throw new Error(validationError);
+
+  const checkIn = toStoredDateTime(normalizedInput.check_in_datetime);
+  const checkOut = toStoredDateTime(normalizedInput.check_out_datetime);
+  const availableRooms = await getAvailableRoomsClient(checkIn, checkOut, id);
+  const unavailableSelectedRooms = roomNumbers.filter(
+    (roomNo) => !availableRooms.includes(roomNo as (typeof ROOMS)[number]),
+  );
+
+  if (unavailableSelectedRooms.length) {
+    throw new Error(
+      `Room ${unavailableSelectedRooms.join(", ")} is no longer available for this date/time.`,
+    );
+  }
+
+  const { data, error } = await browserSupabase
+    .from("bookings")
+    .update({
+      room_no: roomNumbers[0],
+      room_nos: roomNumbers,
+      guest_name: input.guest_name.trim(),
+      customer_phone_number: input.customer_phone_number.trim(),
+      number_of_persons: toNumber(input.number_of_persons),
+      id_type: input.id_type,
+      id_number: input.id_number.trim(),
+      number_of_children: toNumber(input.number_of_children),
+      check_in_datetime: checkIn,
+      check_out_datetime: checkOut,
+      advance_taken: roundMoney(toNumber(input.advance_taken)),
+      total_payment: roundMoney(toNumber(input.total_payment)),
+      remaining_balance: calculateRemainingBalance(
+        input.total_payment,
+        input.advance_taken,
+      ),
+      notes: input.notes.trim(),
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data as Booking;
+}
+
 export async function cancelBookingClient(id: string) {
   if (!browserSupabase) {
     throw new Error("Supabase URL/key are missing in .env.local.");
@@ -403,6 +469,9 @@ export async function checkoutBookingClient(
   id: string,
   booking: Booking,
   amountReceived: number,
+  checkoutDateTime: string,
+  discountApplied = 0,
+  totalPayment: number,
 ) {
   if (!browserSupabase) {
     throw new Error("Supabase URL/key are missing in .env.local.");
@@ -410,13 +479,33 @@ export async function checkoutBookingClient(
 
   const amount = roundMoney(amountReceived);
   if (amount < 0) throw new Error("Final payment cannot be negative.");
+  const discount = roundMoney(discountApplied);
+  if (discount < 0) throw new Error("Discount applied cannot be negative.");
+  if (!Number.isInteger(discount)) {
+    throw new Error("Discount applied must be a whole number.");
+  }
+  const total = roundMoney(totalPayment);
+  if (total < 0) throw new Error("Total payment cannot be negative.");
+  if (discount > total - booking.advance_taken) {
+    throw new Error("Discount applied cannot be more than the remaining balance.");
+  }
+  if (!checkoutDateTime) throw new Error("Check-out date/time is required.");
+
+  const checkoutAt = toStoredDateTime(checkoutDateTime);
+  if (new Date(checkoutAt).getTime() <= new Date(booking.check_in_datetime).getTime()) {
+    throw new Error("Check-out date/time must be after check-in date/time.");
+  }
 
   const { data, error } = await browserSupabase
     .from("bookings")
     .update({
       status: "checked_out",
-      actual_checkout_datetime: new Date().toISOString(),
-      remaining_balance: roundMoney(booking.remaining_balance - amount),
+      check_out_datetime: checkoutAt,
+      actual_checkout_datetime: checkoutAt,
+      total_payment: total,
+      remaining_balance: roundMoney(
+        Math.max(0, total - booking.advance_taken - discount - amount),
+      ),
     })
     .eq("id", id)
     .select("*")
@@ -424,6 +513,24 @@ export async function checkoutBookingClient(
 
   if (error) throw new Error(error.message);
   return data as Booking;
+}
+
+function withOpenEndedCheckout(input: BookingFormInput): BookingFormInput {
+  if (input.check_out_datetime || !input.check_in_datetime) return input;
+
+  return {
+    ...input,
+    check_out_datetime: getOpenEndedCheckoutDateTime(input.check_in_datetime),
+  };
+}
+
+function getVisibleCheckoutDateTime(booking: Booking) {
+  return isOpenEndedCheckoutDateTime(
+    booking.check_in_datetime,
+    booking.check_out_datetime,
+  )
+    ? undefined
+    : booking.check_out_datetime;
 }
 
 async function findConflictingBookingsClient(

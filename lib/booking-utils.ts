@@ -19,6 +19,12 @@ export function toStoredDateTime(value: string) {
   return new Date(value).toISOString();
 }
 
+export function getOpenEndedCheckoutDateTime(checkInDateTime: string) {
+  const date = new Date(checkInDateTime);
+  date.setFullYear(date.getFullYear() + 10);
+  return date.toISOString();
+}
+
 export function formatDateTime(value?: string | null) {
   if (!value) {
     return "-";
@@ -28,6 +34,43 @@ export function formatDateTime(value?: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+export function formatCheckoutDateTime(
+  booking: Pick<
+    Booking,
+    "actual_checkout_datetime" | "check_in_datetime" | "check_out_datetime" | "status"
+  >,
+) {
+  if (booking.actual_checkout_datetime) {
+    return formatDateTime(booking.actual_checkout_datetime);
+  }
+
+  if (
+    isActiveStatus(booking.status) &&
+    isOpenEndedCheckoutDateTime(
+      booking.check_in_datetime,
+      booking.check_out_datetime,
+    )
+  ) {
+    return "Open";
+  }
+
+  return formatDateTime(booking.check_out_datetime);
+}
+
+export function isOpenEndedCheckoutDateTime(
+  checkInDateTime: string,
+  checkOutDateTime?: string | null,
+) {
+  if (!checkOutDateTime) return false;
+
+  const checkIn = new Date(checkInDateTime);
+  const checkOut = new Date(checkOutDateTime);
+  const openEndedThreshold = new Date(checkIn);
+  openEndedThreshold.setFullYear(openEndedThreshold.getFullYear() + 9);
+
+  return checkOut.getTime() >= openEndedThreshold.getTime();
 }
 
 export function isActiveStatus(status: Booking["status"]) {
@@ -78,8 +121,14 @@ export function validateBookingInput(input: BookingFormInput) {
   if (advanceTaken < 0 || totalPayment < 0) {
     return "Payment amounts cannot be negative.";
   }
-  if (!input.check_in_datetime || !input.check_out_datetime) {
-    return "Check-in and check-out date/time are required.";
+  if (!Number.isInteger(advanceTaken)) {
+    return "Advance taken must be a whole number.";
+  }
+  if (!input.check_in_datetime) {
+    return "Check-in date/time is required.";
+  }
+  if (!input.check_out_datetime) {
+    return "Check-out date/time is required.";
   }
   if (
     new Date(input.check_out_datetime).getTime() <=
