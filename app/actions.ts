@@ -10,7 +10,7 @@ import {
   updateBooking,
 } from "@/lib/bookings";
 import { getDateTimeMs, toStoredDateTime } from "@/lib/booking-utils";
-import { sendWhatsAppNotification } from "@/lib/notifications";
+import { sendTelegramNotification } from "@/lib/notifications";
 import type { ActionResult, Booking, BookingFormInput } from "@/lib/types";
 
 export async function checkAvailableRoomsAction(
@@ -56,13 +56,13 @@ export async function createBookingAction(
 ): Promise<ActionResult<Booking>> {
   try {
     const booking = await createBooking(input);
-    const notification = await sendWhatsAppNotification("new_booking", booking);
+    const notification = await sendTelegramNotification("new_booking", booking);
     revalidateBookingPages();
     return {
       ok: true,
       message: notification.ok
         ? "Booking saved successfully."
-        : "Booking saved, but WhatsApp notification failed.",
+        : "Booking saved, but Telegram notification failed.",
       data: booking,
     };
   } catch (error) {
@@ -77,7 +77,7 @@ export async function updateBookingAction(
   try {
     const previousBooking = await getBookingById(id);
     const booking = await updateBooking(id, input);
-    const notification = await sendWhatsAppNotification(
+    const notification = await sendTelegramNotification(
       "modify_booking",
       booking,
       undefined,
@@ -88,7 +88,7 @@ export async function updateBookingAction(
       ok: true,
       message: notification.ok
         ? "Booking updated successfully."
-        : "Booking updated, but WhatsApp notification failed.",
+        : "Booking updated, but Telegram notification failed.",
       data: booking,
     };
   } catch (error) {
@@ -101,13 +101,13 @@ export async function cancelBookingAction(
 ): Promise<ActionResult<Booking>> {
   try {
     const booking = await cancelBooking(id);
-    const notification = await sendWhatsAppNotification("cancel_booking", booking);
+    const notification = await sendTelegramNotification("cancel_booking", booking);
     revalidateBookingPages();
     return {
       ok: true,
       message: notification.ok
         ? "Booking removed successfully."
-        : "Booking removed, but WhatsApp notification failed.",
+        : "Booking removed, but Telegram notification failed.",
       data: booking,
     };
   } catch (error) {
@@ -130,7 +130,7 @@ export async function checkoutBookingAction(
       discountApplied,
       totalPayment,
     );
-    const notification = await sendWhatsAppNotification(
+    const notification = await sendTelegramNotification(
       "checkout",
       booking,
       amountReceived,
@@ -140,7 +140,7 @@ export async function checkoutBookingAction(
       ok: true,
       message: notification.ok
         ? "Customer checked out successfully."
-        : "Customer checked out, but WhatsApp notification failed.",
+        : "Customer checked out, but Telegram notification failed.",
       data: booking,
     };
   } catch (error) {

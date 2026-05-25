@@ -18,6 +18,8 @@ export type Booking = {
   remaining_balance: number;
   notes: string | null;
   status: BookingStatus;
+  reminder_48h_sent_at: string | null;
+  reminder_24h_sent_at: string | null;
   created_at: string;
   updated_at: string;
 };

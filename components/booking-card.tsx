@@ -12,6 +12,7 @@ type BookingCardProps = {
   selected?: boolean;
   isDisabled?: boolean;
   onEdit?: (booking: Booking) => void;
+  onCheckout?: (booking: Booking) => void;
   onRemove?: (booking: Booking) => void;
 };
 
@@ -21,6 +22,7 @@ export function BookingCard({
   selected,
   isDisabled,
   onEdit,
+  onCheckout,
   onRemove,
 }: BookingCardProps) {
   const content = (
@@ -44,7 +46,7 @@ export function BookingCard({
         <p>Balance: Rs {booking.remaining_balance}</p>
         <p>ID: {booking.id_type} {booking.id_number}</p>
       </div>
-      {(onEdit || onRemove) && !isDisabled ? (
+      {(onEdit || onCheckout || onRemove) && !isDisabled ? (
         <div className="mt-4 flex justify-end gap-2">
           {onEdit ? (
             <button
@@ -54,9 +56,22 @@ export function BookingCard({
                 event.stopPropagation();
                 onEdit(booking);
               }}
-              className="rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-bold text-teal-700 shadow-sm hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-md border border-teal-500 bg-teal-100 px-4 py-2 text-sm font-extrabold text-teal-900 shadow-md shadow-teal-900/15 ring-1 ring-teal-200 transition hover:border-teal-600 hover:bg-teal-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Edit
+            </button>
+          ) : null}
+          {onCheckout ? (
+            <button
+              type="button"
+              disabled={isDisabled}
+              onClick={(event) => {
+                event.stopPropagation();
+                onCheckout(booking);
+              }}
+              className="rounded-md border border-emerald-700 bg-emerald-700 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-400 disabled:opacity-60"
+            >
+              Checkout
             </button>
           ) : null}
           {onRemove ? (
@@ -80,8 +95,10 @@ export function BookingCard({
   if (!onSelect) {
     return (
       <article
-        className={`rounded-lg border border-sky-200/80 bg-sky-50/80 p-4 shadow-xl shadow-sky-900/10 backdrop-blur-md ${
+        className={`rounded-lg border bg-sky-50/80 p-4 shadow-xl shadow-sky-900/10 backdrop-blur-md ${
           isDisabled ? "opacity-45" : ""
+        } ${
+          selected ? "border-teal-500 ring-2 ring-teal-100" : "border-sky-200/80"
         }`}
       >
         {content}

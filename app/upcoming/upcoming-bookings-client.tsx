@@ -26,7 +26,7 @@ import {
   getOpenEndedCheckoutDateTime,
   toStoredDateTime,
 } from "@/lib/booking-utils";
-import { sendWhatsAppNotification } from "@/lib/notifications";
+import { sendTelegramNotification } from "@/lib/notifications";
 import { calculateRoomsTotal } from "@/lib/rooms";
 import type { Booking, BookingFormInput } from "@/lib/types";
 
@@ -110,6 +110,7 @@ export function UpcomingBookingsClient({
     setSelectedRooms(rooms);
     setAvailableRooms(rooms);
     setMessage(null);
+    scrollEditPanelIntoViewOnMobile();
   }
 
   function removeBooking(booking: Booking) {
@@ -130,7 +131,7 @@ export function UpcomingBookingsClient({
     startTransition(async () => {
       try {
         const canceledBooking = await cancelBookingClient(booking.id);
-        const notification = await sendWhatsAppNotification(
+        const notification = await sendTelegramNotification(
           "cancel_booking",
           canceledBooking,
         );
@@ -140,7 +141,7 @@ export function UpcomingBookingsClient({
           type: notification.ok ? "success" : "info",
           text: notification.ok
             ? "Booking removed successfully."
-            : "Booking removed, but WhatsApp notification failed.",
+            : "Booking removed, but Telegram notification failed.",
         });
       } catch (error) {
         setRemovedIds((current) => {
@@ -227,7 +228,7 @@ export function UpcomingBookingsClient({
           },
           selectedRooms,
         );
-        const notification = await sendWhatsAppNotification(
+        const notification = await sendTelegramNotification(
           "modify_booking",
           booking,
           undefined,
@@ -244,7 +245,7 @@ export function UpcomingBookingsClient({
           type: notification.ok ? "success" : "info",
           text: notification.ok
             ? "Booking updated successfully."
-            : "Booking updated, but WhatsApp notification failed.",
+            : "Booking updated, but Telegram notification failed.",
         });
       } catch (error) {
         setMessage({ type: "error", text: getErrorMessage(error) });
@@ -287,7 +288,10 @@ export function UpcomingBookingsClient({
           </div>
         </div>
 
-        <aside className="h-fit rounded-lg border border-fuchsia-200/80 bg-fuchsia-50/80 p-4 shadow-xl shadow-fuchsia-900/10 backdrop-blur-md">
+        <aside
+          data-upcoming-edit-panel
+          className="h-fit rounded-lg border border-fuchsia-200/80 bg-fuchsia-50/80 p-4 shadow-xl shadow-fuchsia-900/10 backdrop-blur-md lg:sticky lg:top-4 lg:max-h-[calc(100vh-1rem)] lg:overflow-y-auto"
+        >
           {form && selected ? (
             <form onSubmit={save} className="grid gap-4">
               <div className="flex items-start justify-between gap-3">
@@ -551,6 +555,21 @@ async function loadUpcomingBookings() {
         getDateTimeMs(left.check_in_datetime) -
         getDateTimeMs(right.check_in_datetime),
     );
+}
+
+function scrollEditPanelIntoViewOnMobile() {
+  if (
+    typeof window === "undefined" ||
+    window.matchMedia("(min-width: 1024px)").matches
+  ) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    document
+      .querySelector<HTMLElement>("[data-upcoming-edit-panel]")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function getErrorMessage(error: unknown) {

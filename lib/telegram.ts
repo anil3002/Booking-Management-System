@@ -1,85 +1,68 @@
-import twilio from "twilio";
 import { formatDateTime } from "@/lib/booking-utils";
 import type { Booking } from "@/lib/types";
 
-type WhatsAppNotificationType =
+export type TelegramNotificationType =
   | "new_booking"
   | "checkout"
   | "modify_booking"
   | "cancel_booking";
 
-type WhatsAppRequestBody = {
-  type?: WhatsAppNotificationType;
-  booking?: Booking;
-  amountReceived?: number;
-  previousBooking?: Booking;
+export type TelegramReminderType = "48h" | "24h";
+
+export type TelegramSendResult = {
+  ok: boolean;
+  messageId?: number;
+  error?: string;
 };
 
-export const runtime = "nodejs";
+export async function sendTelegramMessage(
+  text: string,
+): Promise<TelegramSendResult> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId =
+    process.env.TELEGRAM_CHAT_ID ??
+    process.env.TELEGRAM_ADMIN_CHAT_ID ??
+    process.env.HOTEL_OWNER_TELEGRAM_CHAT_ID;
 
-export async function POST(request: Request) {
-  try {
-    const { type, booking, amountReceived, previousBooking } =
-      (await request.json()) as WhatsAppRequestBody;
-
-    if (!type || !booking) {
-      return Response.json(
-        { ok: false, error: "Notification type and booking are required." },
-        { status: 400 },
-      );
-    }
-
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const from = getWhatsAppNumber(
-      process.env.TWILIO_WHATSAPP_FROM ??
-        process.env.TWILIO_FROM_WHATSAPP_NUMBER,
-    );
-    const to = getWhatsAppNumber(
-      process.env.TWILIO_WHATSAPP_TO ??
-        process.env.TWILIO_TO_WHATSAPP_NUMBER ??
-        process.env.OWNER_WHATSAPP_TO ??
-        process.env.HOTEL_OWNER_WHATSAPP,
-    );
-
-    // These Twilio values come from server-only environment variables in .env.local.
-    // Do not prefix them with NEXT_PUBLIC_ or they will be exposed to the browser.
-    if (!accountSid || !authToken || !from || !to) {
-      return Response.json(
-        { ok: false, error: "Twilio WhatsApp environment variables are missing." },
-        { status: 500 },
-      );
-    }
-
-    const client = twilio(accountSid, authToken);
-    const message = await client.messages.create({
-      from,
-      to,
-      body: buildWhatsAppMessage(
-        type,
-        booking,
-        amountReceived ?? 0,
-        previousBooking,
-      ),
-    });
-
-    return Response.json({ ok: true, sid: message.sid });
-  } catch (error) {
-    console.error("Twilio WhatsApp notification failed:", error);
-    return Response.json(
-      { ok: false, error: getErrorMessage(error) },
-      { status: 500 },
-    );
+  if (!botToken || !chatId) {
+    return {
+      ok: false,
+      error: "Telegram environment variables are missing.",
+    };
   }
+
+  const response = await fetch(
+    `https://api.telegram.org/bot${botToken}/sendMessage`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        message_thread_id: process.env.TELEGRAM_MESSAGE_THREAD_ID
+          ? Number(process.env.TELEGRAM_MESSAGE_THREAD_ID)
+          : undefined,
+      }),
+    },
+  );
+  const result = (await response.json()) as {
+    ok?: boolean;
+    description?: string;
+    result?: { message_id?: number };
+  };
+
+  if (!response.ok || !result.ok) {
+    return {
+      ok: false,
+      error: result.description ?? "Telegram notification failed.",
+    };
+  }
+
+  return { ok: true, messageId: result.result?.message_id };
 }
 
-function getWhatsAppNumber(value: string | undefined) {
-  if (!value) return "";
-  return value.startsWith("whatsapp:") ? value : `whatsapp:${value}`;
-}
-
-function buildWhatsAppMessage(
-  type: WhatsAppNotificationType,
+export function buildTelegramMessage(
+  type: TelegramNotificationType,
   booking: Booking,
   amountReceived: number,
   previousBooking?: Booking,
@@ -123,6 +106,17 @@ function buildWhatsAppMessage(
   ].join("\n");
 }
 
+export function buildTelegramReminderMessage(
+  reminderType: TelegramReminderType,
+  booking: Booking,
+) {
+  return [
+    `Upcoming Check-in Reminder - ${reminderType === "48h" ? "48 Hours" : "24 Hours"}`,
+    "",
+    ...formatBookingDetails(booking),
+  ].join("\n");
+}
+
 function formatRooms(booking: Booking) {
   return booking.room_nos?.length ? booking.room_nos.join(", ") : booking.room_no;
 }
@@ -151,7 +145,7 @@ function formatBookingDetails(booking: Booking) {
     `Children: ${booking.number_of_children}`,
     `ID: ${booking.id_type} ${booking.id_number}`,
     `Advance: Rs ${booking.advance_taken}`,
-    ...(booking.notes?.trim() ? [`Notes: ${booking.notes}`] : []),
+    `Notes: ${booking.notes?.trim() || "-"}`,
   ];
 }
 
@@ -223,8 +217,4 @@ function getUpdatedDetail(
   formattedNextValue: string,
 ) {
   return previousValue === nextValue ? null : `${label}: ${formattedNextValue}`;
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Unknown Twilio error";
 }

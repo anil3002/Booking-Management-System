@@ -21,7 +21,7 @@ import {
   createBookingsClient,
   getAvailableRoomsClient,
 } from "@/lib/browser-bookings";
-import { sendWhatsAppNotification } from "@/lib/notifications";
+import { sendTelegramNotification } from "@/lib/notifications";
 
 const initialForm: BookingFormInput = {
   room_no: "",
@@ -96,13 +96,13 @@ export function CheckInForm() {
           { ...form, total_payment: 0 },
           selectedRooms,
         );
-        const notification = await sendWhatsAppNotification("new_booking", booking);
+        const notification = await sendTelegramNotification("new_booking", booking);
         setForm(initialForm);
         setAvailableRooms([]);
         setSelectedRooms([]);
         setShowConfirmation(false);
         if (!notification.ok) {
-          console.warn("Booking saved, but WhatsApp notification failed.");
+          console.warn("Booking saved, but Telegram notification failed.");
         }
         router.push("/");
       } catch (error) {

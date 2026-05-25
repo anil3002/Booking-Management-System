@@ -18,6 +18,8 @@
     remaining_balance numeric not null default 0,
     notes text,
     status text not null default 'booked' check (status in ('booked', 'checked_in', 'checked_out', 'cancelled')),
+    reminder_48h_sent_at timestamp null,
+    reminder_24h_sent_at timestamp null,
     created_at timestamp not null default now(),
     updated_at timestamp not null default now(),
     constraint valid_booking_range check (check_out_datetime > check_in_datetime),
@@ -33,6 +35,12 @@
 
   alter table public.bookings
   add column if not exists customer_phone_number text not null default '';
+
+  alter table public.bookings
+  add column if not exists reminder_48h_sent_at timestamp null;
+
+  alter table public.bookings
+  add column if not exists reminder_24h_sent_at timestamp null;
 
   alter table public.bookings
   drop constraint if exists valid_room_no;
@@ -110,6 +118,12 @@
 
   create index if not exists bookings_status_idx
   on public.bookings (status);
+
+  create index if not exists bookings_reminder_48h_sent_at_idx
+  on public.bookings (reminder_48h_sent_at);
+
+  create index if not exists bookings_reminder_24h_sent_at_idx
+  on public.bookings (reminder_24h_sent_at);
 
   alter table public.bookings enable row level security;
 

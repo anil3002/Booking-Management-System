@@ -163,6 +163,8 @@ export async function createBooking(input: BookingFormInput) {
   const booking: Booking = {
     ...bookingPayload,
     id: crypto.randomUUID(),
+    reminder_48h_sent_at: null,
+    reminder_24h_sent_at: null,
     created_at: now,
     updated_at: now,
   };
