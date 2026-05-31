@@ -13,6 +13,8 @@ import {
   getBookingRooms,
   getOpenEndedCheckoutDateTime,
   getRoomDisplayStatus,
+  availabilityOverlaps,
+  getAvailabilityRange,
   isActiveStatus,
   isOpenEndedCheckoutDateTime,
   overlaps,
@@ -172,7 +174,7 @@ export async function getRoomStatusesForRangeClient(
       .filter(
         (booking) =>
           getBookingRooms(booking).includes(room) &&
-          overlaps(
+          availabilityOverlaps(
             booking.check_in_datetime,
             booking.check_out_datetime,
             checkInDateTime,
@@ -547,11 +549,13 @@ async function findConflictingBookingsClient(
     throw new Error("Supabase URL/key are missing in .env.local.");
   }
 
+  const requestedRange = getAvailabilityRange(checkInDateTime, checkOutDateTime);
+
   let query = browserSupabase
     .from("bookings")
     .select("*")
-    .lt("check_in_datetime", checkOutDateTime)
-    .gt("check_out_datetime", checkInDateTime)
+    .lt("check_in_datetime", requestedRange.checkOut)
+    .gt("check_out_datetime", requestedRange.checkIn)
     .not("status", "in", "(checked_out,cancelled)");
 
   if (excludeBookingId) {
@@ -562,7 +566,7 @@ async function findConflictingBookingsClient(
   if (error) throw new Error(error.message);
 
   return ((data ?? []) as Booking[]).filter((booking) =>
-    overlaps(
+    availabilityOverlaps(
       booking.check_in_datetime,
       booking.check_out_datetime,
       checkInDateTime,

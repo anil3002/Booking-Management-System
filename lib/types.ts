@@ -20,6 +20,7 @@ export type Booking = {
   status: BookingStatus;
   reminder_48h_sent_at: string | null;
   reminder_24h_sent_at: string | null;
+  occupancy_warning_sent_at?: string | null;
   created_at: string;
   updated_at: string;
 };

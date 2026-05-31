@@ -117,6 +117,24 @@ export function buildTelegramReminderMessage(
   ].join("\n");
 }
 
+export function buildTelegramOccupancyWarningMessage(
+  booking: Booking,
+  conflictingBookings: Booking[],
+) {
+  return [
+    "Room Occupancy Warning",
+    "",
+    "Upcoming booking:",
+    ...formatBookingDetails(booking),
+    "",
+    "Current occupied booking:",
+    ...conflictingBookings.flatMap((conflicting, index) => [
+      ...(index > 0 ? [""] : []),
+      ...formatBookingDetails(conflicting),
+    ]),
+  ].join("\n");
+}
+
 function formatRooms(booking: Booking) {
   return booking.room_nos?.length ? booking.room_nos.join(", ") : booking.room_no;
 }

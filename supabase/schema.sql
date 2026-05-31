@@ -20,6 +20,7 @@
     status text not null default 'booked' check (status in ('booked', 'checked_in', 'checked_out', 'cancelled')),
     reminder_48h_sent_at timestamp null,
     reminder_24h_sent_at timestamp null,
+    occupancy_warning_sent_at timestamp null,
     created_at timestamp not null default now(),
     updated_at timestamp not null default now(),
     constraint valid_booking_range check (check_out_datetime > check_in_datetime),
@@ -41,6 +42,9 @@
 
   alter table public.bookings
   add column if not exists reminder_24h_sent_at timestamp null;
+
+  alter table public.bookings
+  add column if not exists occupancy_warning_sent_at timestamp null;
 
   alter table public.bookings
   drop constraint if exists valid_room_no;
@@ -97,7 +101,11 @@
   add constraint prevent_active_room_overlap
   exclude using gist (
     room_no with =,
-    tsrange(check_in_datetime, check_out_datetime, '[)') with &&
+    tsrange(
+      date_trunc('day', check_in_datetime),
+      date_trunc('day', check_in_datetime) + interval '7 days',
+      '[)'
+    ) with &&
   )
   where (status not in ('checked_out', 'cancelled'));
 
@@ -124,6 +132,9 @@
 
   create index if not exists bookings_reminder_24h_sent_at_idx
   on public.bookings (reminder_24h_sent_at);
+
+  create index if not exists bookings_occupancy_warning_sent_at_idx
+  on public.bookings (occupancy_warning_sent_at);
 
   alter table public.bookings enable row level security;
 

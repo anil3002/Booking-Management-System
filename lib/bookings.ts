@@ -18,6 +18,8 @@ import {
   getBookingRooms,
   getOpenEndedCheckoutDateTime,
   getRoomDisplayStatus,
+  availabilityOverlaps,
+  getAvailabilityRange,
   isActiveStatus,
   isOpenEndedCheckoutDateTime,
   overlaps,
@@ -457,14 +459,16 @@ async function findConflictingBookings(
   checkOutDateTime: string,
   excludeBookingId?: string,
 ) {
+  const requestedRange = getAvailabilityRange(checkInDateTime, checkOutDateTime);
+
   if (supabase) {
     // Room clash rule: existing check-in is before new checkout and existing
     // checkout is after new check-in, excluding checked-out/cancelled bookings.
     let query = supabase
       .from("bookings")
       .select("*")
-      .lt("check_in_datetime", checkOutDateTime)
-      .gt("check_out_datetime", checkInDateTime)
+      .lt("check_in_datetime", requestedRange.checkOut)
+      .gt("check_out_datetime", requestedRange.checkIn)
       .in("status", [...ACTIVE_STATUSES]);
 
     if (excludeBookingId) {
@@ -474,7 +478,14 @@ async function findConflictingBookings(
     try {
       const { data, error } = await query;
       if (error) throw new Error(error.message);
-      return data ?? [];
+      return ((data ?? []) as Booking[]).filter((booking) =>
+        availabilityOverlaps(
+          booking.check_in_datetime,
+          booking.check_out_datetime,
+          checkInDateTime,
+          checkOutDateTime,
+        ),
+      );
     } catch (error) {
       warnSupabaseReadFailure(error);
       return [];
@@ -501,7 +512,7 @@ function getMockConflicts(
     (booking) =>
       (!excludeBookingId || booking.id !== excludeBookingId) &&
       isActiveStatus(booking.status) &&
-      overlaps(
+      availabilityOverlaps(
         booking.check_in_datetime,
         booking.check_out_datetime,
         checkInDateTime,

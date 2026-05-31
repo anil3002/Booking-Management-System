@@ -5,6 +5,7 @@ const INDIA_OFFSET_MINUTES = 330;
 const DATE_TIME_PARTS =
   /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?/;
 const EXPLICIT_TIME_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+const DEFAULT_AVAILABILITY_BLOCK_DAYS = 7;
 
 export function calculateRemainingBalance(
   totalPayment: number | "",
@@ -30,6 +31,25 @@ export function getOpenEndedCheckoutDateTime(checkInDateTime: string) {
   return toStoredDateTime(
     `${parts.year + 10}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}`,
   );
+}
+
+export function getAvailabilityBlockEndDateTime(checkInDateTime: string) {
+  return addIndiaDays(
+    getIndiaDayStart(checkInDateTime),
+    DEFAULT_AVAILABILITY_BLOCK_DAYS,
+  );
+}
+
+export function getAvailabilityRange(
+  checkInDateTime: string,
+  checkOutDateTime: string,
+) {
+  return {
+    checkIn: getIndiaDayStart(checkInDateTime),
+    checkOut: isOpenEndedCheckoutDateTime(checkInDateTime, checkOutDateTime)
+      ? getAvailabilityBlockEndDateTime(checkInDateTime)
+      : checkOutDateTime,
+  };
 }
 
 export function formatDateTime(value?: string | null) {
@@ -113,6 +133,23 @@ export function overlaps(
   );
 }
 
+export function availabilityOverlaps(
+  existingCheckIn: string,
+  existingCheckOut: string,
+  newCheckIn: string,
+  newCheckOut: string,
+) {
+  const existingRange = getAvailabilityRange(existingCheckIn, existingCheckOut);
+  const newRange = getAvailabilityRange(newCheckIn, newCheckOut);
+
+  return overlaps(
+    existingRange.checkIn,
+    existingRange.checkOut,
+    newRange.checkIn,
+    newRange.checkOut,
+  );
+}
+
 export function validateBookingInput(input: BookingFormInput) {
   const numberOfPersons = toNumber(input.number_of_persons);
   const numberOfChildren = toNumber(input.number_of_children);
@@ -188,6 +225,11 @@ export function getIndiaDayStart(value: string) {
 export function getIndiaDayEnd(value: string) {
   const parts = getIndiaDateTimeParts(value);
   return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T23:59:59`;
+}
+
+export function addIndiaDays(value: string, days: number) {
+  const next = new Date(getDateTimeMs(value) + days * 24 * 60 * 60 * 1000);
+  return getDateTimeLocalValue(next.toISOString());
 }
 
 export function getBookingRooms(booking: Pick<Booking, "room_no" | "room_nos">) {
