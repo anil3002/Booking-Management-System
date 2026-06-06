@@ -510,6 +510,8 @@ export async function checkoutBookingClient(
       check_out_datetime: checkoutAt,
       actual_checkout_datetime: checkoutAt,
       total_payment: total,
+      final_payment_received: amount,
+      discount_applied: discount,
       remaining_balance: roundMoney(
         Math.max(0, total - booking.advance_taken - discount - amount),
       ),

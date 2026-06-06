@@ -118,11 +118,12 @@ export function buildTelegramReminderMessage(
 }
 
 export function buildTelegramOccupancyWarningMessage(
+  reminderType: TelegramReminderType,
   booking: Booking,
   conflictingBookings: Booking[],
 ) {
   return [
-    "Room Occupancy Warning",
+    `Room Occupancy Warning - ${reminderType === "48h" ? "48 Hours" : "24 Hours"}`,
     "",
     "Upcoming booking:",
     ...formatBookingDetails(booking),

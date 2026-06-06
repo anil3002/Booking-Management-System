@@ -309,6 +309,8 @@ export async function checkoutBooking(
     check_out_datetime: checkoutAt,
     actual_checkout_datetime: checkoutAt,
     total_payment: total,
+    final_payment_received: amount,
+    discount_applied: discount,
     remaining_balance: remainingBalance,
     updated_at: new Date().toISOString(),
   };

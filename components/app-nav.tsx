@@ -6,6 +6,7 @@ const navItems = [
   { href: "/check-out", label: "Check-out" },
   { href: "/upcoming", label: "Upcoming bookings" },
   { href: "/rooms", label: "Rooms" },
+  { href: "/expenses", label: "Expenses" },
 ];
 
 export function AppNav() {

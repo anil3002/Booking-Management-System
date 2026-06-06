@@ -18,7 +18,7 @@ import type { Booking } from "@/lib/types";
 type ReminderResult = {
   bookingId: string;
   guestName: string;
-  reminderType: TelegramReminderType | "occupancy_warning";
+  reminderType: TelegramReminderType | "occupancy_warning_48h" | "occupancy_warning_24h";
   ok: boolean;
   error?: string;
 };
@@ -58,9 +58,13 @@ export async function GET(request: Request) {
         results.push(await sendReminder(booking, reminderType));
       }
 
-      const occupiedConflicts = getOccupiedRoomConflicts(booking, bookings);
-      if (occupiedConflicts.length) {
-        results.push(await sendOccupancyWarning(booking, occupiedConflicts));
+      for (const warningType of getDueOccupancyWarningTypes(booking)) {
+        const occupiedConflicts = getOccupiedRoomConflicts(booking, bookings);
+        if (occupiedConflicts.length) {
+          results.push(
+            await sendOccupancyWarning(booking, occupiedConflicts, warningType),
+          );
+        }
       }
     }
 
@@ -83,16 +87,27 @@ export async function GET(request: Request) {
 async function sendOccupancyWarning(
   booking: Booking,
   conflictingBookings: Booking[],
+  warningType: TelegramReminderType,
 ): Promise<ReminderResult> {
   const result = await sendTelegramMessage(
-    buildTelegramOccupancyWarningMessage(booking, conflictingBookings),
+    buildTelegramOccupancyWarningMessage(
+      warningType,
+      booking,
+      conflictingBookings,
+    ),
   );
+  const reminderType =
+    warningType === "48h" ? "occupancy_warning_48h" : "occupancy_warning_24h";
+  const sentColumn =
+    warningType === "48h"
+      ? "occupancy_warning_48h_sent_at"
+      : "occupancy_warning_sent_at";
 
   if (!result.ok) {
     return {
       bookingId: booking.id,
       guestName: booking.guest_name,
-      reminderType: "occupancy_warning",
+      reminderType,
       ok: false,
       error: result.error ?? "Telegram occupancy warning failed.",
     };
@@ -100,15 +115,15 @@ async function sendOccupancyWarning(
 
   const { error } = await supabase!
     .from("bookings")
-    .update({ occupancy_warning_sent_at: new Date().toISOString() })
+    .update({ [sentColumn]: new Date().toISOString() })
     .eq("id", booking.id)
-    .is("occupancy_warning_sent_at", null);
+    .is(sentColumn, null);
 
   if (error) {
     return {
       bookingId: booking.id,
       guestName: booking.guest_name,
-      reminderType: "occupancy_warning",
+      reminderType,
       ok: false,
       error: error.message,
     };
@@ -117,7 +132,7 @@ async function sendOccupancyWarning(
   return {
     bookingId: booking.id,
     guestName: booking.guest_name,
-    reminderType: "occupancy_warning",
+    reminderType,
     ok: true,
   };
 }
@@ -188,10 +203,6 @@ function isInsideReminderWindow(booking: Booking, targetHours: number) {
 }
 
 function getOccupiedRoomConflicts(booking: Booking, bookings: Booking[]) {
-  if (booking.occupancy_warning_sent_at || !isTomorrowCheckIn(booking)) {
-    return [];
-  }
-
   const bookingRooms = new Set(getBookingRooms(booking));
   const now = Date.now();
 
@@ -208,9 +219,26 @@ function getOccupiedRoomConflicts(booking: Booking, bookings: Booking[]) {
   });
 }
 
-function isTomorrowCheckIn(booking: Booking) {
-  const tomorrow = addIndiaDays(getCurrentDateTimeLocalValue(), 1);
-  return getIndiaDayKey(booking.check_in_datetime) === getIndiaDayKey(tomorrow);
+function getDueOccupancyWarningTypes(booking: Booking) {
+  const dueTypes: TelegramReminderType[] = [];
+
+  if (
+    !booking.occupancy_warning_48h_sent_at &&
+    isCheckInDaysAway(booking, 2)
+  ) {
+    dueTypes.push("48h");
+  }
+
+  if (!booking.occupancy_warning_sent_at && isCheckInDaysAway(booking, 1)) {
+    dueTypes.push("24h");
+  }
+
+  return dueTypes;
+}
+
+function isCheckInDaysAway(booking: Booking, daysAway: number) {
+  const targetDate = addIndiaDays(getCurrentDateTimeLocalValue(), daysAway);
+  return getIndiaDayKey(booking.check_in_datetime) === getIndiaDayKey(targetDate);
 }
 
 function validateCronRequest(request: Request) {

@@ -16,10 +16,13 @@ export type Booking = {
   advance_taken: number;
   total_payment: number;
   remaining_balance: number;
+  final_payment_received?: number | null;
+  discount_applied?: number | null;
   notes: string | null;
   status: BookingStatus;
   reminder_48h_sent_at: string | null;
   reminder_24h_sent_at: string | null;
+  occupancy_warning_48h_sent_at?: string | null;
   occupancy_warning_sent_at?: string | null;
   created_at: string;
   updated_at: string;

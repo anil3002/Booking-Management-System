@@ -5,7 +5,7 @@ const INDIA_OFFSET_MINUTES = 330;
 const DATE_TIME_PARTS =
   /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?/;
 const EXPLICIT_TIME_ZONE = /(?:Z|[+-]\d{2}:?\d{2})$/i;
-const DEFAULT_AVAILABILITY_BLOCK_DAYS = 7;
+const DEFAULT_AVAILABILITY_BLOCK_DAYS = 12;
 
 export function calculateRemainingBalance(
   totalPayment: number | "",

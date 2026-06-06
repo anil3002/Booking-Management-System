@@ -16,10 +16,13 @@
     advance_taken numeric not null default 0 check (advance_taken >= 0),
     total_payment numeric not null default 0 check (total_payment >= 0),
     remaining_balance numeric not null default 0,
+    final_payment_received numeric not null default 0 check (final_payment_received >= 0),
+    discount_applied numeric not null default 0 check (discount_applied >= 0),
     notes text,
     status text not null default 'booked' check (status in ('booked', 'checked_in', 'checked_out', 'cancelled')),
     reminder_48h_sent_at timestamp null,
     reminder_24h_sent_at timestamp null,
+    occupancy_warning_48h_sent_at timestamp null,
     occupancy_warning_sent_at timestamp null,
     created_at timestamp not null default now(),
     updated_at timestamp not null default now(),
@@ -45,6 +48,25 @@
 
   alter table public.bookings
   add column if not exists occupancy_warning_sent_at timestamp null;
+
+  alter table public.bookings
+  add column if not exists occupancy_warning_48h_sent_at timestamp null;
+
+  alter table public.bookings
+  add column if not exists final_payment_received numeric not null default 0;
+
+  alter table public.bookings
+  add column if not exists discount_applied numeric not null default 0;
+
+  update public.bookings
+  set final_payment_received = greatest(
+    total_payment - advance_taken - remaining_balance,
+    0
+  )
+  where status = 'checked_out'
+    and final_payment_received = 0
+    and discount_applied = 0
+    and total_payment > advance_taken + remaining_balance;
 
   alter table public.bookings
   drop constraint if exists valid_room_no;
@@ -103,7 +125,7 @@
     room_no with =,
     tsrange(
       date_trunc('day', check_in_datetime),
-      date_trunc('day', check_in_datetime) + interval '7 days',
+      date_trunc('day', check_in_datetime) + interval '12 days',
       '[)'
     ) with &&
   )
@@ -124,6 +146,9 @@
   create index if not exists bookings_check_out_datetime_idx
   on public.bookings (check_out_datetime);
 
+  create index if not exists bookings_actual_checkout_datetime_idx
+  on public.bookings (actual_checkout_datetime);
+
   create index if not exists bookings_status_idx
   on public.bookings (status);
 
@@ -135,6 +160,9 @@
 
   create index if not exists bookings_occupancy_warning_sent_at_idx
   on public.bookings (occupancy_warning_sent_at);
+
+  create index if not exists bookings_occupancy_warning_48h_sent_at_idx
+  on public.bookings (occupancy_warning_48h_sent_at);
 
   alter table public.bookings enable row level security;
 
