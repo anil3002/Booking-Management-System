@@ -225,9 +225,9 @@ export function ExpensesClient() {
           note="Checked out in the selected date range"
         />
         <MetricCard
-          label="Average Income"
-          value={formatCurrency(analytics.averageIncome)}
-          note="Per completed booking"
+          label="Net Collected"
+          value={formatCurrency(analytics.netCollected)}
+          note="Advances plus final payments"
         />
       </div>
 
@@ -255,6 +255,7 @@ export function ExpensesClient() {
                   <th className="py-3 pr-4">Guest</th>
                   <th className="py-3 pr-4">Rooms</th>
                   <th className="py-3 pr-4">Checkout</th>
+                  <th className="py-3 pr-4 text-right">Total</th>
                   <th className="py-3 pr-4 text-right">Advance</th>
                   <th className="py-3 pr-4 text-right">Discount</th>
                   <th className="py-3 pr-4 text-right">Final</th>
@@ -270,6 +271,9 @@ export function ExpensesClient() {
                     <td className="py-3 pr-4">{formatRooms(item.booking)}</td>
                     <td className="py-3 pr-4">
                       {formatDateTime(item.booking.actual_checkout_datetime)}
+                    </td>
+                    <td className="py-3 pr-4 text-right">
+                      {formatCurrency(item.total)}
                     </td>
                     <td className="py-3 pr-4 text-right">
                       {formatCurrency(item.advance)}
@@ -588,12 +592,13 @@ function calculateEarnings(bookings: Booking[], from: string, to: string) {
         getDateTimeMs(a.actual_checkout_datetime ?? a.check_out_datetime),
     )
     .map((booking) => {
+      const total = toMoney(booking.total_payment);
       const advance = toMoney(booking.advance_taken);
       const discount = toMoney(booking.discount_applied ?? 0);
       const finalPayment = getFinalPayment(booking, advance, discount);
-      const income = roundMoney(advance - discount + finalPayment);
+      const income = roundMoney(total - discount);
 
-      return { booking, advance, discount, finalPayment, income };
+      return { booking, total, advance, discount, finalPayment, income };
     });
 
   const advancesTaken = sum(completedBookings.map((item) => item.advance));
@@ -608,10 +613,8 @@ function calculateEarnings(bookings: Booking[], from: string, to: string) {
     advancesTaken,
     discountsGiven,
     finalPaymentsTaken,
+    netCollected: roundMoney(advancesTaken + finalPaymentsTaken),
     totalIncome,
-    averageIncome: completedBookings.length
-      ? roundMoney(totalIncome / completedBookings.length)
-      : 0,
   };
 }
 
@@ -621,8 +624,8 @@ function getEmptyEarnings() {
     advancesTaken: 0,
     discountsGiven: 0,
     finalPaymentsTaken: 0,
+    netCollected: 0,
     totalIncome: 0,
-    averageIncome: 0,
   };
 }
 
