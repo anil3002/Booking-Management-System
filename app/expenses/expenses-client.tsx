@@ -10,12 +10,19 @@ import { getAllBookingsClient } from "@/lib/browser-bookings";
 import {
   formatDateTime,
   formatRooms,
+  getBookingRooms,
   getCurrentDateTimeLocalValue,
   getDateTimeMs,
   getIndiaDayEnd,
   getIndiaDayStart,
   roundMoney,
 } from "@/lib/booking-utils";
+import {
+  calculateBillableStayPeriods,
+  ROOM_RATES,
+  ROOMS,
+  type RoomNo,
+} from "@/lib/rooms";
 import type { Booking } from "@/lib/types";
 
 const EXPENSES_PASSWORD = "KanVenk@15106";
@@ -296,6 +303,67 @@ export function ExpensesClient() {
               No checked-out bookings found for this date range.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="bg-white/92">
+        <CardHeader>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-950">
+                Room-wise income
+              </h2>
+              <p className="text-sm text-slate-600">
+                Based on each room&apos;s overlap with the selected date range.
+              </p>
+            </div>
+            <p className="text-sm font-semibold text-slate-700">
+              {analytics.roomBreakdown.filter((item) => item.days > 0).length} rooms
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          {analytics.roomBreakdown.some((item) => item.days > 0) ? (
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="py-3 pr-4">Room</th>
+                  <th className="py-3 pr-4 text-right">Bookings</th>
+                  <th className="py-3 pr-4 text-right">Days</th>
+                  <th className="py-3 pr-4 text-right">Rate</th>
+                  <th className="py-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-slate-800">
+                {analytics.roomBreakdown
+                  .filter((item) => item.days > 0)
+                  .map((item) => (
+                    <tr key={item.room}>
+                      <td className="py-3 pr-4 font-semibold text-slate-950">
+                        Room {item.room} x {item.days}
+                      </td>
+                      <td className="py-3 pr-4 text-right">
+                        {item.bookingCount}
+                      </td>
+                      <td className="py-3 pr-4 text-right">{item.days}</td>
+                      <td className="py-3 pr-4 text-right">
+                        {formatCurrency(item.rate)}
+                      </td>
+                      <td className="py-3 text-right font-bold text-emerald-700">
+                        {formatCurrency(item.amount)}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-slate-600">
+              No room usage found for this date range.
+            </p>
+          )}
+          <p className="mt-4 text-xs font-semibold text-slate-500">
+            Note: this room-wise amount does not subtract discounts.
+          </p>
         </CardContent>
       </Card>
 
@@ -607,6 +675,7 @@ function calculateEarnings(bookings: Booking[], from: string, to: string) {
     completedBookings.map((item) => item.finalPayment),
   );
   const totalIncome = sum(completedBookings.map((item) => item.income));
+  const roomBreakdown = calculateRoomBreakdown(bookings, fromMs, toMs);
 
   return {
     completedBookings,
@@ -615,6 +684,7 @@ function calculateEarnings(bookings: Booking[], from: string, to: string) {
     finalPaymentsTaken,
     netCollected: roundMoney(advancesTaken + finalPaymentsTaken),
     totalIncome,
+    roomBreakdown,
   };
 }
 
@@ -626,7 +696,70 @@ function getEmptyEarnings() {
     finalPaymentsTaken: 0,
     netCollected: 0,
     totalIncome: 0,
+    roomBreakdown: ROOMS.map((room) => ({
+      room,
+      rate: ROOM_RATES[room],
+      days: 0,
+      bookingCount: 0,
+      amount: 0,
+    })),
   };
+}
+
+function calculateRoomBreakdown(
+  bookings: Booking[],
+  rangeStartMs: number,
+  rangeEndMs: number,
+) {
+  const roomTotals = new Map(
+    ROOMS.map((room) => [
+      room,
+      {
+        room,
+        rate: ROOM_RATES[room],
+        days: 0,
+        bookingCount: 0,
+        amount: 0,
+      },
+    ]),
+  );
+
+  for (const booking of bookings) {
+    if (booking.status === "cancelled") continue;
+
+    const overlapStartMs = Math.max(
+      getDateTimeMs(booking.check_in_datetime),
+      rangeStartMs,
+    );
+    const overlapEndMs = Math.min(
+      getDateTimeMs(
+        booking.actual_checkout_datetime ?? booking.check_out_datetime,
+      ),
+      rangeEndMs,
+    );
+
+    if (overlapEndMs <= overlapStartMs) continue;
+
+    const overlapStart = new Date(overlapStartMs).toISOString();
+    const overlapEnd = new Date(overlapEndMs).toISOString();
+    const days = calculateBillableStayPeriods(overlapStart, overlapEnd);
+    if (!days) continue;
+
+    for (const room of getBookingRooms(booking)) {
+      const roomNo = room as RoomNo;
+      const current = roomTotals.get(roomNo);
+      if (!current) continue;
+
+      current.days += days;
+      current.bookingCount += 1;
+      current.amount = roundMoney(current.amount + ROOM_RATES[roomNo] * days);
+    }
+  }
+
+  return [...roomTotals.values()].sort((a, b) => {
+    if (b.amount !== a.amount) return b.amount - a.amount;
+    return a.room.localeCompare(b.room);
+  });
 }
 
 function getFinalPayment(

@@ -14,6 +14,7 @@ import {
   getOpenEndedCheckoutDateTime,
   getRoomDisplayStatus,
   availabilityOverlaps,
+  bookingBlocksAvailability,
   getAvailabilityRange,
   isActiveStatus,
   isOpenEndedCheckoutDateTime,
@@ -556,7 +557,7 @@ async function findConflictingBookingsClient(
   let query = browserSupabase
     .from("bookings")
     .select("*")
-    .lt("check_in_datetime", requestedRange.checkOut)
+    .lte("check_in_datetime", getIndiaDayEnd(requestedRange.checkIn))
     .gt("check_out_datetime", requestedRange.checkIn)
     .not("status", "in", "(checked_out,cancelled)");
 
@@ -568,7 +569,7 @@ async function findConflictingBookingsClient(
   if (error) throw new Error(error.message);
 
   return ((data ?? []) as Booking[]).filter((booking) =>
-    availabilityOverlaps(
+    bookingBlocksAvailability(
       booking.check_in_datetime,
       booking.check_out_datetime,
       checkInDateTime,

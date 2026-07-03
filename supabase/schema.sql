@@ -119,18 +119,6 @@
   alter table public.bookings
   drop constraint if exists prevent_active_room_overlap;
 
-  alter table public.bookings
-  add constraint prevent_active_room_overlap
-  exclude using gist (
-    room_no with =,
-    tsrange(
-      date_trunc('day', check_in_datetime),
-      date_trunc('day', check_in_datetime) + interval '12 days',
-      '[)'
-    ) with &&
-  )
-  where (status not in ('checked_out', 'cancelled'));
-
   create index if not exists bookings_room_status_dates_idx
   on public.bookings (room_no, status, check_in_datetime, check_out_datetime);
 

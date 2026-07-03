@@ -150,6 +150,26 @@ export function availabilityOverlaps(
   );
 }
 
+export function bookingBlocksAvailability(
+  existingCheckIn: string,
+  existingCheckOut: string,
+  newCheckIn: string,
+  newCheckOut: string,
+) {
+  const existingRange = getAvailabilityRange(existingCheckIn, existingCheckOut);
+  const newRange = getAvailabilityRange(newCheckIn, newCheckOut);
+
+  return (
+    getDateTimeMs(existingRange.checkIn) <= getDateTimeMs(newRange.checkIn) &&
+    overlaps(
+      existingRange.checkIn,
+      existingRange.checkOut,
+      newRange.checkIn,
+      newRange.checkOut,
+    )
+  );
+}
+
 export function validateBookingInput(input: BookingFormInput) {
   const numberOfPersons = toNumber(input.number_of_persons);
   const numberOfChildren = toNumber(input.number_of_children);
